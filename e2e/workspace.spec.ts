@@ -242,7 +242,7 @@ async function azureFixture(
       await route.fulfill({ json: response, headers });
     },
   );
-  await page.goto("/#/settings");
+  await page.goto("/settings");
   await page.getByLabel("Organization name").fill("company");
   await page.getByLabel(/^Personal access token/).fill(token);
   await page.getByRole("button", { name: "Connect with token" }).click();
@@ -418,7 +418,7 @@ test("startup and reloading protected routes show Azure connection with no demo 
       }),
     ),
   );
-  await page.goto("/#/work");
+  await page.goto("/work");
   await expect(
     page.getByRole("heading", { name: "Workspace settings" }),
   ).toBeVisible();

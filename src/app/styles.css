@@ -1,20 +1,24 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
 :root {
   font-family: "DM Sans", system-ui, sans-serif;
-  color: #1b2941;
-  background: #f5f7fb;
+  color: #17233a;
+  background: #f6f8fc;
   font-synthesis: none;
-  --blue: #245be8;
+  --blue: #315be7;
   --line: #e3e8f1;
-  --muted: #708097;
+  --muted: #6c7a91;
   --surface: #fff;
-  --soft: #eef3ff;
+  --soft: #edf2ff;
+  --shadow-sm: 0 1px 2px rgb(22 35 58 / 4%);
+  --shadow-md: 0 12px 28px rgb(25 46 87 / 8%);
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
+  min-width: 320px;
+  background: #f6f8fc;
 }
 button,
 input,
@@ -30,18 +34,21 @@ button,
   gap: 7px;
   padding: 9px 13px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   background: #fff;
   color: #33415b;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   white-space: normal;
 }
 button:hover,
 .button:hover {
-  background: #f3f6fc;
+  background: #f2f5fb;
+  border-color: #cdd7e8;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 button:disabled {
   opacity: 0.5;
@@ -55,7 +62,8 @@ button.primary,
 }
 button.primary:hover,
 .button.primary:hover {
-  background: #184bcb;
+  background: #244bd1;
+  border-color: #244bd1;
 }
 button.icon {
   padding: 7px;
@@ -74,10 +82,21 @@ textarea {
   min-width: 0;
   padding: 10px 11px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   background: #fff;
   color: #1b2941;
   font-size: 13px;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #becbe0;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #7594ef;
+  outline: 3px solid rgb(78 116 231 / 14%);
 }
 input:disabled,
 select:disabled,
@@ -136,7 +155,7 @@ a {
   grid-template-columns: 218px minmax(0, 1fr);
 }
 .sidebar {
-  background: #fff;
+  background: linear-gradient(180deg, #fff 0%, #fbfcff 100%);
   border-right: 1px solid var(--line);
   padding: 30px 18px 20px;
   display: flex;
@@ -186,11 +205,12 @@ a {
   text-decoration: none;
   font-size: 13px;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: 9px;
 }
 .sidebar a.active {
-  background: #eef3ff;
+  background: #eaf0ff;
   color: var(--blue);
+  box-shadow: inset 3px 0 0 var(--blue);
 }
 .sidebar a:hover {
   background: #f4f6fa;
@@ -245,12 +265,17 @@ a {
 }
 .topbar {
   padding: 21px 36px;
-  background: #fff;
-  border-bottom: 1px solid var(--line);
+  background: rgb(255 255 255 / 92%);
+  border-bottom: 1px solid rgb(227 232 241 / 88%);
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgb(32 53 92 / 3%);
 }
 .breadcrumb {
   font-size: 12px;
@@ -270,6 +295,7 @@ a {
   gap: 5px;
   font-size: 12px;
   text-decoration: none;
+  font-weight: 600;
 }
 .mode-banner {
   display: flex;
@@ -285,7 +311,8 @@ a {
   color: #286448;
 }
 .content {
-  max-width: 1250px;
+  width: 100%;
+  max-width: 1320px;
   padding: 32px 36px 50px;
   margin: auto;
 }
@@ -311,8 +338,9 @@ a {
 .panel {
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 14px;
   padding: 22px;
+  box-shadow: var(--shadow-sm);
 }
 .section-heading {
   display: flex;
@@ -367,7 +395,7 @@ a {
 .story-card {
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 14px;
   margin-top: 20px;
   overflow: hidden;
 }
@@ -684,7 +712,8 @@ a {
 .work-group {
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   margin-bottom: 18px;
   overflow: hidden;
 }
@@ -1093,7 +1122,7 @@ a {
   margin: 16px 0;
   padding: 14px;
   border: 1px solid #dfe6f2;
-  border-radius: 10px;
+  border-radius: 12px;
   background: white;
 }
 .selection-controls label,
@@ -1146,7 +1175,8 @@ a {
   padding: 16px;
   background: white;
   border: 1px solid #dfe6f2;
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
 }
 .hours-settings label {
   width: 140px;
@@ -1159,9 +1189,10 @@ a {
 }
 .hour-card {
   border: 1px solid #dfe6f2;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 20px;
   background: white;
+  box-shadow: var(--shadow-sm);
 }
 .hour-card h3 {
   margin-top: 0;
@@ -1226,7 +1257,8 @@ a {
 .virtual-work-list {
   background: white;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -1236,6 +1268,18 @@ a {
 }
 .virtual-task {
   background: white;
+}
+@media (hover: hover) {
+  .panel,
+  .story-card,
+  .hour-card {
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .panel:hover,
+  .hour-card:hover {
+    border-color: #d5ddeb;
+    box-shadow: var(--shadow-md);
+  }
 }
 @media (max-width: 700px) {
   .sidebar {
@@ -1248,5 +1292,45 @@ a {
   }
   .main-shell {
     grid-column: auto;
+  }
+}
+@media (max-width: 700px) {
+  .topbar {
+    position: static;
+    backdrop-filter: none;
+  }
+  .top-link {
+    padding: 7px 0;
+  }
+  .mode-banner {
+    align-items: flex-start;
+  }
+  .mode-banner svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+  }
+  .toolbar > input,
+  .toolbar > select,
+  .toolbar > .multi-select-trigger,
+  .bulk-toolbar label,
+  .hours-settings label {
+    width: 100%;
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .project-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .project-tabs button {
+    flex: 0 0 auto;
+  }
+  .work-story {
+    padding: 16px;
+  }
+  .hours-settings {
+    align-items: stretch;
   }
 }
