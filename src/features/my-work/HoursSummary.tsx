@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Iteration, WorkItem } from "../../shared/api/types";
+import { isIterationCurrent, type Iteration, type WorkItem } from "../../shared/api/types";
 import {
   DEFAULT_SPRINT_TARGET,
   hourTotals,
@@ -85,7 +85,7 @@ export function HoursSummary({
   const selected = availableSprints.filter(
     (iteration) =>
       selectedSprints.includes("all") ||
-      (selectedSprints.includes("current") && iteration.current) ||
+      (selectedSprints.includes("current") && isIterationCurrent(iteration)) ||
       selectedSprints.includes(iteration.path),
   );
   const currentMonth = new Date().toISOString().slice(0, 7);

@@ -1,4 +1,4 @@
-import type { Iteration, WorkItem } from "../../shared/api/types";
+import { isIterationCurrent, type Iteration, type WorkItem } from "../../shared/api/types";
 export const DEFAULT_SPRINT_TARGET = { min: 30, max: 40 };
 export function owns(item: WorkItem, user: string, owner: string) {
   return (
@@ -16,7 +16,9 @@ export function sprintMatches(
   if (sprint === "all") return true;
   if (sprint === "backlog") return item.iteration === backlog;
   if (sprint === "current")
-    return iterations.some((i) => i.current && i.path === item.iteration);
+    return iterations.some(
+      (i) => isIterationCurrent(i) && i.path === item.iteration,
+    );
   return item.iteration === sprint;
 }
 export function uniqueSprints(iterations: Iteration[]) {

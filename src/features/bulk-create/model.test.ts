@@ -66,6 +66,8 @@ describe("bulk creation rules", () => {
         iterations: demoMetadata.iterations.map((i) => ({
           ...i,
           current: true,
+          startDate: undefined,
+          finishDate: undefined,
         })),
       }),
     ).toThrow();

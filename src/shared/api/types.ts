@@ -22,6 +22,23 @@ export interface Iteration extends Choice {
   path: string;
   current?: boolean;
 }
+/**
+ * Azure's `timeFrame` is useful when dates are absent, but date ranges are the
+ * source of truth when they are available. Finish dates are inclusive.
+ */
+export function isIterationCurrent(
+  iteration: Pick<Iteration, "startDate" | "finishDate" | "current">,
+  now = new Date(),
+) {
+  if (!iteration.startDate || !iteration.finishDate)
+    return !!iteration.current;
+  const day = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = Date.parse(`${iteration.startDate.slice(0, 10)}T00:00:00Z`);
+  const finish = Date.parse(`${iteration.finishDate.slice(0, 10)}T00:00:00Z`);
+  return Number.isFinite(start) && Number.isFinite(finish)
+    ? day >= start && day <= finish
+    : !!iteration.current;
+}
 export interface ParentItem extends Choice {
   parentId?: string;
 }

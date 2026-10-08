@@ -1,6 +1,7 @@
 import type { AuthSession } from "../../features/auth/types";
 import {
   fields,
+  isIterationCurrent,
   storyPointFields,
   type Choice,
   type Metadata,
@@ -253,15 +254,18 @@ export class AzureRepository implements Repository {
                 }[];
               }>(`${path}/iterations`);
               iterations.push(
-                ...sprints.value.map((s) => ({
-                  id: s.id,
-                  name: s.name,
-                  path: s.path,
-                  current: s.attributes.timeFrame === "current",
-                  startDate: s.attributes.startDate,
-                  finishDate: s.attributes.finishDate,
-                  project: project.name,
-                })),
+                ...sprints.value.map((s) => {
+                  const iteration = {
+                    id: s.id,
+                    name: s.name,
+                    path: s.path,
+                    current: s.attributes.timeFrame === "current",
+                    startDate: s.attributes.startDate,
+                    finishDate: s.attributes.finishDate,
+                    project: project.name,
+                  };
+                  return { ...iteration, current: isIterationCurrent(iteration) };
+                }),
               );
             })(),
           ]);
@@ -489,14 +493,17 @@ export class AzureRepository implements Repository {
       people,
       epics: choices(epicType),
       features: choices(featureType),
-      iterations: iterations.value.map((i) => ({
-        id: i.id,
-        name: i.name,
-        path: i.path,
-        current: i.attributes.timeFrame === "current",
-        startDate: i.attributes.startDate,
-        finishDate: i.attributes.finishDate,
-      })),
+      iterations: iterations.value.map((i) => {
+        const iteration = {
+          id: i.id,
+          name: i.name,
+          path: i.path,
+          current: i.attributes.timeFrame === "current",
+          startDate: i.attributes.startDate,
+          finishDate: i.attributes.finishDate,
+        };
+        return { ...iteration, current: isIterationCurrent(iteration) };
+      }),
       backlogPath: teamSettings.backlogIteration.path,
       areaPath: teamField.defaultValue,
       storyType,

@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import { owns, sprintMatches, hourTotals, monthSprints } from "./filters";
-import type { WorkItem, Iteration } from "../../shared/api/types";
+import {
+  isIterationCurrent,
+  type WorkItem,
+  type Iteration,
+} from "../../shared/api/types";
 const item: WorkItem = {
   id: 1,
   rev: 1,
@@ -45,6 +49,25 @@ it("matches the token owner, another identity, all users and exact sprint paths"
   );
   expect(sprintMatches(item, "current", [], "OMS")).toBe(false);
   expect(sprintMatches(item, "all", [], "OMS")).toBe(true);
+});
+it("uses inclusive sprint date ranges as the source of truth for current status", () => {
+  const sprint: Iteration = {
+    id: "dated",
+    name: "Dated sprint",
+    path: "OMS\\Dated",
+    current: false,
+    startDate: "2026-10-01T00:00:00Z",
+    finishDate: "2026-10-14T00:00:00Z",
+  };
+  expect(isIterationCurrent(sprint, new Date("2026-10-01T12:00:00Z"))).toBe(
+    true,
+  );
+  expect(isIterationCurrent(sprint, new Date("2026-10-14T12:00:00Z"))).toBe(
+    true,
+  );
+  expect(isIterationCurrent(sprint, new Date("2026-10-15T12:00:00Z"))).toBe(
+    false,
+  );
 });
 it("sums task numbers without NaN propagation and rounds decimal hours", () => {
   expect(

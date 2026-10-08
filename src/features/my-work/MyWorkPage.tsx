@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { useWorkspace } from "../../app/Workspace";
 import {
   fields,
+  isIterationCurrent,
   type WorkItem,
   type WorkLoadProgress,
 } from "../../shared/api/types";
@@ -676,7 +677,7 @@ function WorkList({
         />
       </div>
       {destinations.includes("current") &&
-        !iterations.some((i) => i.current) && (
+        !iterations.some((iteration) => isIterationCurrent(iteration)) && (
           <Notice>
             No current sprint is configured for this view. Choose another sprint
             or All iterations.

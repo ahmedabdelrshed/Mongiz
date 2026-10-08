@@ -1,6 +1,7 @@
 import { ApiError } from "../../shared/api/azure";
 import {
   fields,
+  isIterationCurrent,
   type Metadata,
   type Patch,
   type Repository,
@@ -15,7 +16,9 @@ import {
 export function resolveIteration(draft: Draft, meta: Metadata) {
   if (draft.destination === "backlog") return meta.backlogPath;
   if (draft.destination === "current") {
-    const current = meta.iterations.filter((i) => i.current);
+    const current = meta.iterations.filter((iteration) =>
+      isIterationCurrent(iteration),
+    );
     if (current.length !== 1)
       throw new Error(
         "Choose a specific sprint or Backlog: the team has no single active sprint.",
