@@ -1,10 +1,13 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { HoursSummary } from "./HoursSummary";
 
+afterEach(() => vi.useRealTimers());
+
 it("uses one capacity target when current-sprint work spans projects", async () => {
-  const user = userEvent.setup();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-09T12:00:00Z"));
   render(
     <HoursSummary
       scope="hours-summary-multiple-projects"
@@ -17,6 +20,7 @@ it("uses one capacity target when current-sprint work spans projects", async () 
           path: "OMS\\Sprint 12",
           project: "OMS",
           current: true,
+          startDate: "2026-10-01",
         },
         {
           id: "billing-current",
@@ -24,6 +28,7 @@ it("uses one capacity target when current-sprint work spans projects", async () 
           path: "Billing\\Sprint 12",
           project: "Billing",
           current: true,
+          startDate: "2026-10-01",
         },
         {
           id: "portal-current",
@@ -31,12 +36,14 @@ it("uses one capacity target when current-sprint work spans projects", async () 
           path: "Portal\\Sprint 12",
           project: "Portal",
           current: true,
+          startDate: "2026-10-01",
         },
         {
           id: "oms-next",
           name: "OMS next",
           path: "OMS\\Sprint 13",
           project: "OMS",
+          startDate: "2026-11-01",
         },
       ]}
       items={[
@@ -83,8 +90,17 @@ it("uses one capacity target when current-sprint work spans projects", async () 
       ]}
     />,
   );
+  vi.useRealTimers();
+  const user = userEvent.setup();
 
   expect(screen.getAllByText("Target: 30–40h · Below target")).toHaveLength(3);
+  expect(
+    screen.getByRole("heading", { name: "Month · October 2026" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Estimated: 30h")).toBeInTheDocument();
+  expect(
+    screen.getByText("Target: 120–160h · Below target"),
+  ).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Calculation sprints" }));
   const sprints = screen.getByRole("dialog", {
@@ -101,6 +117,20 @@ it("uses one capacity target when current-sprint work spans projects", async () 
   expect(screen.getByText("OMS · OMS next")).toBeInTheDocument();
   expect(screen.getByText("Estimated: 8h")).toBeInTheDocument();
 
+  await user.click(screen.getByRole("button", { name: "Calculation months" }));
+  const months = screen.getByRole("dialog", {
+    name: "Calculation months options",
+  });
+  await user.type(
+    within(months).getByLabelText("Search Calculation months"),
+    "November",
+  );
+  await user.click(within(months).getByText("November 2026", { exact: true }));
+  await user.keyboard("{Escape}");
+  expect(
+    screen.getByRole("heading", { name: "Month · November 2026" }),
+  ).toBeInTheDocument();
+
   await user.click(
     screen.getByRole("button", { name: "Calculation projects" }),
   );
@@ -113,7 +143,7 @@ it("uses one capacity target when current-sprint work spans projects", async () 
   );
   await user.click(within(menu).getByText("Billing", { exact: true }));
   await user.keyboard("{Escape}");
-  expect(screen.getByText("Estimated: 10h")).toBeInTheDocument();
+  expect(screen.getAllByText("Estimated: 10h")).toHaveLength(2);
 
   await user.click(
     screen.getByRole("button", { name: "Calculation projects" }),

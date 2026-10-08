@@ -3,7 +3,6 @@ import type { Iteration, WorkItem } from "../../shared/api/types";
 import {
   DEFAULT_SPRINT_TARGET,
   hourTotals,
-  monthSprints,
   uniqueSprints,
   owns,
 } from "./filters";
@@ -34,6 +33,7 @@ export function HoursSummary({
   scope: string;
 }) {
   const [selectedSprints, setSelectedSprints] = useState(["current"]);
+  const [selectedMonths, setSelectedMonths] = useState(["current"]);
   const [user, setUser] = useState("mine");
   const [selectedProjects, setSelectedProjects] = useState(["all"]);
   const projectFor = (item: WorkItem) =>
@@ -88,12 +88,34 @@ export function HoursSummary({
       (selectedSprints.includes("current") && iteration.current) ||
       selectedSprints.includes(iteration.path),
   );
-  const month = monthSprints(selected, availableIterations);
-  const monthTasks = month
-    ? calculationItems.filter((t) =>
-        month.sprints.some((i) => i.path === t.iteration),
-      )
-    : [];
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const availableMonths = [
+    ...new Set(
+      availableSprints.flatMap((iteration) =>
+        iteration.startDate ? [iteration.startDate.slice(0, 7)] : [],
+      ),
+    ),
+  ].sort();
+  const selectedMonthValues = [
+    ...new Set(
+      selectedMonths.includes("all")
+        ? availableMonths
+        : [
+            ...(selectedMonths.includes("current") ? [currentMonth] : []),
+            ...selectedMonths.filter((month) => month !== "current"),
+          ],
+    ),
+  ];
+  const iterationsForMonth = (month: string) =>
+    availableSprints.filter(
+      (iteration) => iteration.startDate?.slice(0, 7) === month,
+    );
+  const monthTitle = (month: string) =>
+    new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
   const titleFor = (iteration: Iteration) =>
     iteration.project
       ? `${iteration.project} · ${iteration.name}`
@@ -135,6 +157,7 @@ export function HoursSummary({
           onChange={(value) => {
             setSelectedProjects(value);
             setSelectedSprints(["current"]);
+            setSelectedMonths(["current"]);
           }}
         />
         <SearchableMultiSelect
@@ -150,6 +173,20 @@ export function HoursSummary({
           value={selectedSprints}
           allValue="all"
           onChange={setSelectedSprints}
+        />
+        <SearchableMultiSelect
+          label="Calculation months"
+          options={[
+            { value: "all", label: "All available months" },
+            { value: "current", label: "Current month" },
+            ...availableMonths.map((month) => ({
+              value: month,
+              label: monthTitle(month),
+            })),
+          ]}
+          value={selectedMonths}
+          allValue="all"
+          onChange={setSelectedMonths}
         />
       </div>
       <div className="hours-settings">
@@ -207,24 +244,41 @@ export function HoursSummary({
             unavailable="Choose a sprint with metadata to calculate hours."
           />
         )}
-        <HourBar
-          title={
-            month
-              ? `Month · ${new Date(month.month + "-01T00:00:00Z").toLocaleDateString("en", { month: "long", year: "numeric", timeZone: "UTC" })}`
-              : "Month"
-          }
-          items={monthTasks}
-          target={bounds(month?.sprints.length ?? 1)}
-          available={!!month}
-          unavailable="Month totals need a single month and configured sprint start dates."
-        />
+        {selectedMonthValues.length ? (
+          selectedMonthValues.map((month) => {
+            const monthIterations = iterationsForMonth(month);
+            return (
+              <HourBar
+                key={month}
+                title={`Month · ${monthTitle(month)}`}
+                items={calculationItems.filter((item) =>
+                  monthIterations.some(
+                    (iteration) => iteration.path === item.iteration,
+                  ),
+                )}
+                // A month represents four sprint-capacity periods.
+                target={bounds(4)}
+                available={!!monthIterations.length}
+                unavailable="No configured sprints start in this month."
+              />
+            );
+          })
+        ) : (
+          <HourBar
+            title="Months"
+            items={[]}
+            target={bounds(1)}
+            available={false}
+            unavailable="No months are available from the selected projects."
+          />
+        )}
       </div>
       <p className="muted">
         Totals include pending local task edits across all accessible projects.
         Local closures update completed hours immediately. User and sprint
         controls are independent of the list filters. Save writes changes to
         Azure; Discard restores saved values. Month totals include whole sprints
-        starting in the selected sprint's month.
+        starting in each selected month.
       </p>
     </section>
   );
