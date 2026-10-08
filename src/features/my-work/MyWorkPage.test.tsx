@@ -22,6 +22,18 @@ function setup() {
     </MemoryRouter>,
   );
 }
+async function chooseFilter(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  option: string,
+) {
+  await user.click(screen.getByRole("button", { name: label }));
+  const menu = await screen.findByRole("dialog", {
+    name: `${label} options`,
+  });
+  await user.click(within(menu).getByText(option, { exact: true }));
+  await user.keyboard("{Escape}");
+}
 it("edits remain local until Save; closure includes another user's sibling task", async () => {
   const existing = await demoRepository.listMine();
   localStorage.setItem(
@@ -42,7 +54,7 @@ it("edits remain local until Save; closure includes another user's sibling task"
   await screen.findByRole("heading", {
     name: "Search device history by serial number",
   });
-  await user.selectOptions(screen.getByLabelText("Filter user"), "all");
+  await chooseFilter(user, "Filter user", "All users");
   const estimate = screen.getByLabelText("Build search form estimate hours");
   await user.clear(estimate);
   await user.type(estimate, "5");
@@ -196,8 +208,10 @@ it("defaults to token owner/current sprint and changes user/sprint filters with 
   const user = userEvent.setup();
   setup();
   await screen.findByLabelText("Filter user");
-  expect(screen.getByLabelText("Filter user")).toHaveValue("mine");
-  expect(screen.getByLabelText("Filter destination")).toHaveValue("current");
+  expect(screen.getByLabelText("Filter user")).toHaveTextContent("My tasks");
+  expect(screen.getByLabelText("Filter destination")).toHaveTextContent(
+    "Current sprint",
+  );
   expect(
     screen.queryByLabelText("Sara current task state"),
   ).not.toBeInTheDocument();
@@ -206,34 +220,35 @@ it("defaults to token owner/current sprint and changes user/sprint filters with 
   ).not.toBeInTheDocument();
   expect(screen.getByText("Estimated: 7h")).toBeInTheDocument();
   expect(screen.getByText("Estimated: 17h")).toBeInTheDocument();
-  await user.selectOptions(
-    screen.getByLabelText("Filter user"),
-    "sara@example.com",
+  await user.click(screen.getByRole("button", { name: "Filter user" }));
+  const userMenu = screen.getByRole("dialog", {
+    name: "Filter user options",
+  });
+  await user.type(
+    within(userMenu).getByLabelText("Search Filter user"),
+    "Sara",
   );
+  await user.click(within(userMenu).getByText("Sara", { exact: true }));
   expect(screen.getByLabelText("Sara current task state")).toBeInTheDocument();
-  expect(
-    screen.queryByLabelText("Build search form state"),
-  ).not.toBeInTheDocument();
-  await user.selectOptions(screen.getByLabelText("Filter user"), "mine");
-  await user.selectOptions(
-    screen.getByLabelText("Filter destination"),
-    "OMS\\Sprint 13",
-  );
+  expect(screen.getByLabelText("Build search form state")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await chooseFilter(user, "Filter user", "All users");
+  await chooseFilter(user, "Filter user", "My tasks (ahmed@example.com)");
+  await chooseFilter(user, "Filter destination", "All iterations");
+  await chooseFilter(user, "Filter destination", "OMS\\Sprint 13");
   expect(screen.getByLabelText("Next sprint task state")).toBeInTheDocument();
   expect(
     screen.queryByLabelText("Build search form state"),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Estimated: 7h")).toBeInTheDocument();
-  await user.selectOptions(
-    screen.getByLabelText("Calculation sprint"),
-    "OMS\\Sprint 13",
-  );
+  await chooseFilter(user, "Calculation sprints", "Current sprints");
+  await chooseFilter(user, "Calculation sprints", "OMS · Sprint 13");
   expect(screen.getByText("Estimated: 10h")).toBeInTheDocument();
-  expect(screen.getByLabelText("Filter destination")).toHaveValue(
+  expect(screen.getByLabelText("Filter destination")).toHaveTextContent(
     "OMS\\Sprint 13",
   );
-  await user.selectOptions(screen.getByLabelText("Filter destination"), "all");
-  await user.selectOptions(screen.getByLabelText("Filter user"), "all");
+  await chooseFilter(user, "Filter destination", "All iterations");
+  await chooseFilter(user, "Filter user", "All users");
   expect(screen.getByLabelText("Sara current task state")).toBeInTheDocument();
   expect(screen.getByLabelText("Next sprint task state")).toBeInTheDocument();
 });
@@ -243,7 +258,9 @@ it("shows incremental progress and keeps loaded work editable", async () => {
   const story = all.find((item) => item.type === "User Story")!;
   const task = all.find((item) => item.type === "Task")!;
   let resolve!: (items: typeof all) => void;
-  let emit!: (progress: import("../../shared/api/types").WorkLoadProgress) => void;
+  let emit!: (
+    progress: import("../../shared/api/types").WorkLoadProgress,
+  ) => void;
   const fetch = vi.spyOn(demoRepository, "listMine").mockImplementation(
     (_assignee, _metadata, onProgress) =>
       new Promise((r) => {
@@ -270,7 +287,9 @@ it("shows incremental progress and keeps loaded work editable", async () => {
     items: [story, task],
   });
   const estimate = await screen.findByLabelText(`${task.title} estimate hours`);
-  expect(screen.getByLabelText("Current project items progress")).toHaveValue(2);
+  expect(screen.getByLabelText("Current project items progress")).toHaveValue(
+    2,
+  );
   await user.clear(estimate);
   await user.type(estimate, "4");
   expect(estimate).toHaveValue(4);
@@ -290,20 +309,17 @@ it("shows incremental progress and keeps loaded work editable", async () => {
       screen.queryByLabelText("Selected projects progress"),
     ).not.toBeInTheDocument(),
   );
-  await user.selectOptions(screen.getByLabelText("Filter status"), "Closed");
-  expect(
-    within(screen.getByLabelText("Filter status")).getByRole("option", {
-      name: "Active",
-      selected: false,
-    }),
-  ).toBeInTheDocument();
+  await chooseFilter(user, "Filter status", "Closed");
+  expect(screen.getByLabelText("Filter status")).toHaveTextContent("Closed");
   await user.click(
     screen.getByRole("button", { name: "Show all loaded items" }),
   );
   expect(screen.getByLabelText("Build search form state")).toBeInTheDocument();
   expect(fetch).toHaveBeenCalledOnce();
   expect(screen.getByLabelText("Calculation user")).toHaveValue("mine");
-  expect(screen.getByLabelText("Calculation sprint")).toHaveValue("current");
+  expect(screen.getByLabelText("Calculation sprints")).toHaveTextContent(
+    "Current sprints",
+  );
 });
 
 it("keeps partial rows visible when a work load fails", async () => {

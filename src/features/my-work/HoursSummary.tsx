@@ -8,6 +8,7 @@ import {
   owns,
 } from "./filters";
 import { storageKey, useStored } from "../../shared/storage/storage";
+import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 function validTarget(value: unknown): value is { min: number; max: number } {
   const v = value as { min: number; max: number };
   return (
@@ -32,10 +33,29 @@ export function HoursSummary({
   people: import("../../shared/api/types").Person[];
   scope: string;
 }) {
-  const [sprint, setSprint] = useState("current");
+  const [selectedSprints, setSelectedSprints] = useState(["current"]);
   const [user, setUser] = useState("mine");
-  const availableIterations = iterations;
-  const calculationItems = items.filter((i) => owns(i, user, owner));
+  const [selectedProjects, setSelectedProjects] = useState(["all"]);
+  const projectFor = (item: WorkItem) =>
+    item.project ??
+    iterations.find((iteration) => iteration.path === item.iteration)?.project;
+  const projectNames = [
+    ...new Set(
+      [
+        ...iterations.map((iteration) => iteration.project),
+        ...items.map(projectFor),
+      ].filter((project): project is string => !!project),
+    ),
+  ].sort();
+  const includesProject = (project?: string) =>
+    selectedProjects.includes("all") ||
+    (!!project && selectedProjects.includes(project));
+  const availableIterations = iterations.filter((iteration) =>
+    includesProject(iteration.project),
+  );
+  const calculationItems = items.filter(
+    (item) => owns(item, user, owner) && includesProject(projectFor(item)),
+  );
   const users = [
     ...new Set([
       ...people.map((p) => p.identity),
@@ -61,20 +81,23 @@ export function HoursSummary({
     minimum === "" ||
     maximum === "" ||
     !validTarget({ min: Number(minimum), max: Number(maximum) });
-  const selected = uniqueSprints(availableIterations).filter((i) =>
-    sprint === "current" ? i.current : i.path === sprint,
+  const availableSprints = uniqueSprints(availableIterations);
+  const selected = availableSprints.filter(
+    (iteration) =>
+      selectedSprints.includes("all") ||
+      (selectedSprints.includes("current") && iteration.current) ||
+      selectedSprints.includes(iteration.path),
   );
   const month = monthSprints(selected, availableIterations);
-  const sprintTasks = calculationItems.filter((t) =>
-    selected.some((i) => i.path === t.iteration),
-  );
   const monthTasks = month
     ? calculationItems.filter((t) =>
         month.sprints.some((i) => i.path === t.iteration),
       )
     : [];
-  const title =
-    sprint === "current" ? "Current sprint" : (selected[0]?.name ?? "Sprint");
+  const titleFor = (iteration: Iteration) =>
+    iteration.project
+      ? `${iteration.project} · ${iteration.name}`
+      : iteration.name;
   const bounds = (factor: number) => ({
     min: target.min * factor,
     max: target.max * factor,
@@ -98,19 +121,36 @@ export function HoursSummary({
               </option>
             ))}
         </select>
-        <strong>All accessible projects</strong>
-        <select
-          aria-label="Calculation sprint"
-          value={sprint}
-          onChange={(e) => setSprint(e.target.value)}
-        >
-          <option value="current">Current sprint</option>
-          {uniqueSprints(availableIterations).map((i) => (
-            <option key={i.path} value={i.path}>
-              {i.path}
-            </option>
-          ))}
-        </select>
+        <SearchableMultiSelect
+          label="Calculation projects"
+          options={[
+            { value: "all", label: "All accessible projects" },
+            ...projectNames.map((project) => ({
+              value: project,
+              label: project,
+            })),
+          ]}
+          value={selectedProjects}
+          allValue="all"
+          onChange={(value) => {
+            setSelectedProjects(value);
+            setSelectedSprints(["current"]);
+          }}
+        />
+        <SearchableMultiSelect
+          label="Calculation sprints"
+          options={[
+            { value: "all", label: "All available sprints" },
+            { value: "current", label: "Current sprints" },
+            ...availableSprints.map((iteration) => ({
+              value: iteration.path,
+              label: titleFor(iteration),
+            })),
+          ]}
+          value={selectedSprints}
+          allValue="all"
+          onChange={setSelectedSprints}
+        />
       </div>
       <div className="hours-settings">
         <strong>Capacity target per sprint</strong>
@@ -144,13 +184,29 @@ export function HoursSummary({
         </p>
       )}
       <div className="hours-cards">
-        <HourBar
-          title={title}
-          items={sprintTasks}
-          target={bounds(selected.length || 1)}
-          available={!!selected.length}
-          unavailable="Choose a sprint with metadata to calculate hours."
-        />
+        {selected.length ? (
+          selected.map((iteration) => (
+            <HourBar
+              key={iteration.path}
+              title={titleFor(iteration)}
+              items={calculationItems.filter(
+                (item) => item.iteration === iteration.path,
+              )}
+              // Capacity is configured per person and sprint, not per project.
+              target={bounds(1)}
+              available
+              unavailable=""
+            />
+          ))
+        ) : (
+          <HourBar
+            title="Sprints"
+            items={[]}
+            target={bounds(1)}
+            available={false}
+            unavailable="Choose a sprint with metadata to calculate hours."
+          />
+        )}
         <HourBar
           title={
             month

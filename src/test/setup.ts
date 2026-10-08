@@ -28,3 +28,6 @@ globalThis.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
+// cmdk scrolls the active option into view. JSDOM does not implement it.
+HTMLElement.prototype.scrollIntoView = vi.fn();

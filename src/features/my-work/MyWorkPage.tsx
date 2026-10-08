@@ -9,6 +9,7 @@ import {
   type WorkLoadProgress,
 } from "../../shared/api/types";
 import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
+import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 import { storageKey, useStored } from "../../shared/storage/storage";
 import { ProjectPicker } from "./ProjectPicker";
 import { VirtualWorkList } from "./VirtualWorkList";
@@ -69,7 +70,9 @@ function WorkLoadPanel({
 }) {
   const totalProjects = progress?.totalProjects ?? 1;
   const totalItems = progress?.totalItems;
-  const itemFraction = totalItems ? (progress?.loadedItems ?? 0) / totalItems : 0;
+  const itemFraction = totalItems
+    ? (progress?.loadedItems ?? 0) / totalItems
+    : 0;
   const projectValue = Math.min(
     totalProjects,
     (progress?.completedProjects ?? 0) + itemFraction,
@@ -91,7 +94,8 @@ function WorkLoadPanel({
               : "Loading status"}
         </strong>
         <span>
-          {progress?.completedProjects ?? 0} of {totalProjects} projects complete
+          {progress?.completedProjects ?? 0} of {totalProjects} projects
+          complete
         </span>
       </div>
       <progress
@@ -136,10 +140,10 @@ function WorkList({
 }: { today: boolean } & DraftProps) {
   const w = useWorkspace(),
     client = useQueryClient();
-  const [search, setSearch] = useState(""),
-    [status, setStatus] = useState(""),
-    [destination, setDestination] = useState("current");
-  const [user, setUser] = useState("mine");
+  const [search, setSearch] = useState("");
+  const [statuses, setStatuses] = useState(["all"]);
+  const [destinations, setDestinations] = useState(["current"]);
+  const [selectedUsers, setSelectedUsers] = useState(["mine"]);
   const owner = w.settings.mode === "demo" ? "ahmed@example.com" : w.account;
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -310,15 +314,46 @@ function WorkList({
       ...items.map((i) => i.assignedTo).filter(Boolean),
     ]),
   ].sort();
+  const destinationOptions = [
+    { value: "all", label: "All iterations" },
+    { value: "current", label: "Current sprint" },
+    { value: "backlog", label: "Backlog" },
+    ...iterations.map((iteration) => ({
+      value: iteration.path,
+      label: iteration.path,
+    })),
+    ...[...new Set(shown.map((item) => item.iteration))]
+      .filter(
+        (path) =>
+          path && !iterations.some((iteration) => iteration.path === path),
+      )
+      .map((path) => ({ value: path, label: `${path} (dates unavailable)` })),
+  ];
+  const userOptions = [
+    { value: "mine", label: `My tasks (${owner || "token owner"})` },
+    { value: "all", label: "All users" },
+    ...users
+      .filter((identity) => identity.toLowerCase() !== owner.toLowerCase())
+      .map((identity) => ({
+        value: identity,
+        label:
+          w.meta!.people.find((person) => person.identity === identity)?.name ??
+          identity,
+      })),
+  ];
   const matches = (i: WorkItem) =>
-    owns(i, user, owner) &&
-    (!status || i.state === status) &&
-    sprintMatches(
-      i,
-      destination,
-      iterations,
-      configFor(i)?.backlogPath ?? w.meta!.backlogPath,
-    ) &&
+    (selectedUsers.includes("all") ||
+      selectedUsers.some((user) => owns(i, user, owner))) &&
+    (statuses.includes("all") || statuses.includes(i.state)) &&
+    (destinations.includes("all") ||
+      destinations.some((destination) =>
+        sprintMatches(
+          i,
+          destination,
+          iterations,
+          configFor(i)?.backlogPath ?? w.meta!.backlogPath,
+        ),
+      )) &&
     (i.title.toLowerCase().includes(search.toLowerCase()) ||
       String(i.id).includes(search));
   const stories = shown.filter(
@@ -509,7 +544,8 @@ function WorkList({
             items.filter((i) => i.isTask ?? i.type === w.meta!.taskType).length
           }
           stories={
-            items.filter((i) => i.isStory ?? i.type === w.meta!.storyType).length
+            items.filter((i) => i.isStory ?? i.type === w.meta!.storyType)
+              .length
           }
         />
       )}
@@ -519,17 +555,20 @@ function WorkList({
           <button onClick={() => void query.refetch()}>Retry</button>
         </Notice>
       )}
-      {w.settings.mode === "azure" && !items.length && !query.isFetching && !query.error && (
-        <Notice tone="error">
-          Azure loading finished with no accessible stories or tasks.
-          Organization: {w.settings.organization}. Queried projects:{" "}
-          {w.workProjects.map((p) => p.name).join(", ") || "none"}. Connected
-          user: {w.account}. This is not caused by the list filters. Verify this
-          organization contains your work items and that the token owner has
-          project and Work Items read access.
-          <button onClick={w.refresh}>Reload projects and work items</button>
-        </Notice>
-      )}
+      {w.settings.mode === "azure" &&
+        !items.length &&
+        !query.isFetching &&
+        !query.error && (
+          <Notice tone="error">
+            Azure loading finished with no accessible stories or tasks.
+            Organization: {w.settings.organization}. Queried projects:{" "}
+            {w.workProjects.map((p) => p.name).join(", ") || "none"}. Connected
+            user: {w.account}. This is not caused by the list filters. Verify
+            this organization contains your work items and that the token owner
+            has project and Work Items read access.
+            <button onClick={w.refresh}>Reload projects and work items</button>
+          </Notice>
+        )}
       <p className="muted">
         Loaded{" "}
         {items.filter((i) => i.isTask ?? i.type === w.meta!.taskType).length}{" "}
@@ -541,9 +580,9 @@ function WorkList({
         disabled={busy}
         onClick={() => {
           setSearch("");
-          setStatus("");
-          setUser("all");
-          setDestination("all");
+          setStatuses(["all"]);
+          setSelectedUsers(["all"]);
+          setDestinations(["all"]);
           setProject("");
           setSelected([]);
         }}
@@ -600,72 +639,48 @@ function WorkList({
             setSelected([]);
           }}
         />
-        <select
-          aria-label="Filter status"
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
+        <SearchableMultiSelect
+          label="Filter status"
+          options={[
+            { value: "all", label: "All statuses" },
+            ...states.map((state) => ({ value: state, label: state })),
+          ]}
+          value={statuses}
+          allValue="all"
+          onChange={(value) => {
+            setStatuses(value);
             setSelected([]);
           }}
-        >
-          <option value="">All statuses</option>
-          {states.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter destination"
-          value={destination}
-          onChange={(e) => {
-            setDestination(e.target.value);
+        />
+        <SearchableMultiSelect
+          label="Filter destination"
+          options={destinationOptions}
+          value={destinations}
+          allValue="all"
+          onChange={(value) => {
+            setDestinations(value);
             setSelected([]);
           }}
-        >
-          <option value="all">All iterations</option>
-          <option value="current">Current sprint</option>
-          <option value="backlog">Backlog</option>
-          {iterations.map((i) => (
-            <option key={i.path} value={i.path}>
-              {i.path}
-            </option>
-          ))}
-          {[...new Set(shown.map((i) => i.iteration))]
-            .filter((path) => path && !iterations.some((i) => i.path === path))
-            .map((path) => (
-              <option key={path} value={path}>
-                {path} (dates unavailable)
-              </option>
-            ))}
-        </select>
-        <select
-          aria-label="Filter user"
-          value={user}
+        />
+        <SearchableMultiSelect
+          label="Filter user"
+          options={userOptions}
+          value={selectedUsers}
+          allValue="all"
           disabled={busy}
-          onChange={(e) => {
-            setUser(e.target.value);
+          onChange={(value) => {
+            setSelectedUsers(value);
             setSelected([]);
           }}
-        >
-          <option value="mine">My tasks ({owner || "token owner"})</option>
-          <option value="all">All users</option>
-          {users
-            .filter(
-              (identity) => identity.toLowerCase() !== owner.toLowerCase(),
-            )
-            .map((identity) => (
-              <option key={identity} value={identity}>
-                {w.meta!.people.find((p) => p.identity === identity)?.name ??
-                  identity}
-              </option>
-            ))}
-        </select>
+        />
       </div>
-      {destination === "current" && !iterations.some((i) => i.current) && (
-        <Notice>
-          No current sprint is configured for this view. Choose another sprint
-          or All iterations.
-        </Notice>
-      )}
+      {destinations.includes("current") &&
+        !iterations.some((i) => i.current) && (
+          <Notice>
+            No current sprint is configured for this view. Choose another sprint
+            or All iterations.
+          </Notice>
+        )}
       {w.meta.warnings.map((warning, index) => (
         <Notice key={index}>{warning}</Notice>
       ))}
@@ -800,7 +815,13 @@ function WorkList({
       )}
       {groups.length ? (
         <VirtualWorkList
-          key={project + user + destination + status + search}
+          key={[
+            project,
+            ...selectedUsers,
+            ...destinations,
+            ...statuses,
+            search,
+          ].join(":")}
           rowCount={virtualRows.length}
           renderRow={(index) => {
             const row = virtualRows[index];
