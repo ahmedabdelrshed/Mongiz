@@ -20,6 +20,7 @@ export function effective(item: WorkItem, edits: Edits): WorkItem {
   const v = edits[item.id]?.values ?? {};
   return {
     ...item,
+    title: String(v["System.Title"] ?? item.title),
     storyPoints:
       item.storyPointField && v[item.storyPointField] !== undefined
         ? Number(v[item.storyPointField])
@@ -59,6 +60,7 @@ export function stage(
   )
     merged[fields.completed] = Number(estimate);
   const original: Record<string, unknown> = {
+    "System.Title": item.title,
     "System.State": item.state,
     "System.AssignedTo": item.assignedTo,
     ...(item.storyPointField

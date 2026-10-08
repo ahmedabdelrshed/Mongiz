@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, ExternalLink, Save } from "lucide-react";
+import { Plus, RefreshCw, ExternalLink, Save, Pencil, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useWorkspace } from "../../app/Workspace";
 import {
@@ -155,6 +155,7 @@ function WorkList({
   const [storyState, setStoryState] = useState("");
   const [bulkEstimate, setBulkEstimate] = useState("");
   const [bulkPoints, setBulkPoints] = useState("");
+  const [titleEditor, setTitleEditor] = useState<WorkItem | null>(null);
   const [plan, setPlan, planError] = useStored<number[]>(
     planKey(w.scope),
     [],
@@ -589,7 +590,7 @@ function WorkList({
       >
         Show all loaded items
       </button>
-      <Notice>
+      <Notice compact label="How task changes work">
         Closing one task stages the same closed state for all tasks under its
         story, including tasks assigned to other users. Changing a task status
         sets Completed Work to its current estimate. Loading and estimate edits
@@ -597,7 +598,7 @@ function WorkList({
         changes applies them to Azure.
       </Notice>
       {count > 0 && (
-        <Notice>
+        <Notice compact label={`${count} unsaved work items`}>
           {count} work items have unsaved changes. They are kept in this browser
           if you navigate away. Refresh preserves these edits; Save checks Azure
           revisions.
@@ -852,6 +853,7 @@ function WorkList({
                       )
                     }
                     onChange={(values) => change(item, values)}
+                    onEditTitle={() => setTitleEditor(item)}
                   />
                 </div>
               );
@@ -863,7 +865,8 @@ function WorkList({
                     <span className="type-badge">
                       {group.story.type.toUpperCase()} · #{group.story.id}
                     </span>
-                    <label className="story-selection">
+                    <div className="story-title-row">
+                      <label className="story-selection">
                       <input
                         type="checkbox"
                         aria-label={`Select story: ${group.story.title}`}
@@ -871,8 +874,18 @@ function WorkList({
                         disabled={busy}
                         onChange={() => toggle(group.story!.id)}
                       />
-                      <h2>{group.story.title}</h2>
-                    </label>
+                        <h2>{group.story.title}</h2>
+                      </label>
+                      <button
+                        type="button"
+                        className="icon title-edit"
+                        aria-label={`Edit title: ${group.story.title}`}
+                        disabled={busy}
+                        onClick={() => setTitleEditor(group.story!)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    </div>
                     <div className="story-edit-controls">
                       <label>
                         State
@@ -962,6 +975,16 @@ function WorkList({
           Try another filter or create a story.
         </Empty>
       )}
+      {titleEditor && (
+        <TitleDialog
+          item={titleEditor}
+          onClose={() => setTitleEditor(null)}
+          onSave={(title) => {
+            change(titleEditor, { "System.Title": title });
+            setTitleEditor(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -974,6 +997,7 @@ function ItemRow({
   planned,
   onPlan,
   onChange,
+  onEditTitle,
 }: {
   item: WorkItem;
   edits: Edits;
@@ -983,6 +1007,7 @@ function ItemRow({
   planned: boolean;
   onPlan: () => void;
   onChange: (values: Record<string, string | number>) => void;
+  onEditTitle: () => void;
 }) {
   const w = useWorkspace();
   const config = w.meta!.projectConfigs?.[item.project ?? ""];
@@ -1003,9 +1028,10 @@ function ItemRow({
   );
   return (
     <div className="work-row" data-dirty={!!edits[item.id]}>
-      <label className="work-title">
+      <div className="work-title">
         <input
           type="checkbox"
+          aria-label={`Select task: ${item.title}`}
           checked={selected}
           disabled={busy}
           onChange={onSelect}
@@ -1016,7 +1042,19 @@ function ItemRow({
             {edits[item.id] ? " · Unsaved" : ""}
           </span>
           <br />
-          {item.title}
+          <span className="work-title-text">{item.title}</span>
+          <button
+            type="button"
+            className="icon title-edit"
+            aria-label={`Edit title: ${item.title}`}
+            disabled={busy}
+            onClick={(event) => {
+              event.preventDefault();
+              onEditTitle();
+            }}
+          >
+            <Pencil size={14} />
+          </button>
           {item.url && (
             <a
               className="external"
@@ -1029,7 +1067,7 @@ function ItemRow({
             </a>
           )}
         </span>
-      </label>
+      </div>
       <select
         aria-label={`${item.title} state`}
         value={item.state}
@@ -1075,6 +1113,62 @@ function ItemRow({
           style={{ transform: planned ? "rotate(45deg)" : "none" }}
         />
       </button>
+    </div>
+  );
+}
+function TitleDialog({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: WorkItem;
+  onClose: () => void;
+  onSave: (title: string) => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const trimmed = title.trim();
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="title-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-title-heading"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <p className="eyebrow">{item.type} #{item.id}</p>
+            <h2 id="edit-title-heading">Edit title</h2>
+          </div>
+          <button className="icon" type="button" aria-label="Close title editor" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (trimmed) onSave(trimmed);
+          }}
+        >
+          <label>
+            Title
+            <input
+              autoFocus
+              aria-label="Work item title"
+              maxLength={255}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <div className="dialog-actions">
+            <button type="button" onClick={onClose}>Cancel</button>
+            <button className="primary" type="submit" disabled={!trimmed}>
+              Save title
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

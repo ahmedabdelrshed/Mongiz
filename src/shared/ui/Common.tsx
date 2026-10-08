@@ -1,23 +1,34 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
 export function Notice({
   children,
   tone = "info",
+  compact = false,
+  label = "More information",
 }: {
   children: ReactNode;
   tone?: "info" | "error" | "success";
+  /** Shows the message in a small, hover/focus-revealed hint. */
+  compact?: boolean;
+  label?: string;
 }) {
+  const descriptionId = useId();
   return (
     <div
-      className={`notice ${tone}`}
+      className={`notice ${tone}${compact ? " compact" : ""}`}
       role={tone === "error" ? "alert" : "status"}
+      tabIndex={compact ? 0 : undefined}
+      aria-label={compact ? label : undefined}
+      aria-describedby={compact ? descriptionId : undefined}
     >
       {tone === "success" ? (
         <CheckCircle2 size={17} />
       ) : (
         <AlertCircle size={17} />
       )}
-      <div>{children}</div>
+      <div id={compact ? descriptionId : undefined} className={compact ? "notice-tooltip" : undefined}>
+        {children}
+      </div>
     </div>
   );
 }

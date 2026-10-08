@@ -125,7 +125,7 @@ export function HoursSummary({
     max: target.max * factor,
   });
   return (
-    <section className="hours-summary" aria-label="Sprint and month hours">
+    <section className="hours-summary hours-summary-compact" aria-label="Sprint and month hours">
       <h2>Hour calculations</h2>
       <div className="toolbar">
         <select
