@@ -238,22 +238,58 @@ it("defaults to token owner/current sprint and changes user/sprint filters with 
   expect(screen.getByLabelText("Next sprint task state")).toBeInTheDocument();
 });
 
-it("waits for all work before showing filters, then filters the global snapshot locally", async () => {
+it("shows incremental progress and keeps loaded work editable", async () => {
   const all = await demoRepository.listMine("all");
+  const story = all.find((item) => item.type === "User Story")!;
+  const task = all.find((item) => item.type === "Task")!;
   let resolve!: (items: typeof all) => void;
+  let emit!: (progress: import("../../shared/api/types").WorkLoadProgress) => void;
   const fetch = vi.spyOn(demoRepository, "listMine").mockImplementation(
-    () =>
+    (_assignee, _metadata, onProgress) =>
       new Promise((r) => {
         resolve = r;
+        emit = onProgress!;
       }),
   );
   const user = userEvent.setup();
   setup();
-  await screen.findByRole("status");
-  expect(screen.queryByLabelText("Filter status")).not.toBeInTheDocument();
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  await screen.findByRole("progressbar", {
+    name: "Selected projects progress",
+  });
+  expect(screen.getByLabelText("Filter status")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Refreshing…" })).toBeEnabled();
+  emit({
+    project: { id: "oms", name: "OMS" },
+    projectIndex: 0,
+    totalProjects: 1,
+    completedProjects: 0,
+    phase: "loading",
+    totalItems: all.length,
+    loadedItems: 2,
+    items: [story, task],
+  });
+  const estimate = await screen.findByLabelText(`${task.title} estimate hours`);
+  expect(screen.getByLabelText("Current project items progress")).toHaveValue(2);
+  await user.clear(estimate);
+  await user.type(estimate, "4");
+  expect(estimate).toHaveValue(4);
+  emit({
+    project: { id: "oms", name: "OMS" },
+    projectIndex: 0,
+    totalProjects: 1,
+    completedProjects: 0,
+    phase: "loading",
+    totalItems: all.length,
+    loadedItems: all.length,
+    items: all.filter((item) => item.id !== story.id && item.id !== task.id),
+  });
   resolve(all);
-  await screen.findByLabelText("Filter user");
+  await waitFor(() =>
+    expect(
+      screen.queryByLabelText("Selected projects progress"),
+    ).not.toBeInTheDocument(),
+  );
   await user.selectOptions(screen.getByLabelText("Filter status"), "Closed");
   expect(
     within(screen.getByLabelText("Filter status")).getByRole("option", {
@@ -268,6 +304,37 @@ it("waits for all work before showing filters, then filters the global snapshot 
   expect(fetch).toHaveBeenCalledOnce();
   expect(screen.getByLabelText("Calculation user")).toHaveValue("mine");
   expect(screen.getByLabelText("Calculation sprint")).toHaveValue("current");
+});
+
+it("keeps partial rows visible when a work load fails", async () => {
+  const all = await demoRepository.listMine("all");
+  const story = all.find((item) => item.type === "User Story")!;
+  const task = all.find((item) => item.type === "Task")!;
+  let reject!: (error: Error) => void;
+  const load = vi.spyOn(demoRepository, "listMine").mockImplementation(
+    (_assignee, _metadata, onProgress) =>
+      new Promise((_, fail) => {
+        reject = fail;
+        onProgress?.({
+          project: { id: "platform", name: "Platform" },
+          projectIndex: 1,
+          totalProjects: 2,
+          completedProjects: 1,
+          phase: "loading",
+          totalItems: 5,
+          loadedItems: 2,
+          items: [story, task],
+        });
+      }),
+  );
+  const user = userEvent.setup();
+  setup();
+  await screen.findByLabelText(`${task.title} state`);
+  reject(new Error("Platform: work-item loading failed."));
+  await screen.findByText("Platform: work-item loading failed.");
+  expect(screen.getByLabelText(`${task.title} state`)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
 });
 
 it("refresh stays available with manual edits and preserves the draft", async () => {

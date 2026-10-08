@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,7 +15,13 @@ import {
 import type { AuthSession } from "../features/auth/types";
 import { AzureAuth } from "../features/auth/msal";
 import { AzureRepository } from "../shared/api/azure";
-import type { Settings, Repository, Metadata } from "../shared/api/types";
+import type {
+  Settings,
+  Repository,
+  Metadata,
+  WorkItem,
+  WorkLoadProgress,
+} from "../shared/api/types";
 import { useStored } from "../shared/storage/storage";
 const defaults: Settings = {
   mode: "azure",
@@ -62,6 +69,9 @@ interface Context {
   scope: string;
   meta?: Metadata;
   work: UseQueryResult<import("../shared/api/types").WorkItem[], Error>;
+  workItems: WorkItem[];
+  workProgress?: WorkLoadProgress;
+  replaceWorkItem: (item: WorkItem) => void;
   loading: boolean;
   error: Error | null;
   refresh: () => void;
@@ -176,6 +186,7 @@ export function WorkspaceProvider({
     .sort()
     .join("|");
   const workQueryKey = ["work", scope, selectionKey];
+  const workRequestKey = workQueryKey.join(":");
   const hasWorkSelection = settings.mode === "demo" || workProjects.length > 0;
   const query = useQuery({
     queryKey: ["metadata", scope, selectionKey],
@@ -183,9 +194,57 @@ export function WorkspaceProvider({
     enabled: enabled && !!projectQuery.data && hasWorkSelection,
     retry: false,
   });
+  const workLoadId = useRef(0);
+  const [partialWork, setPartialWork] = useState<{
+    requestKey: string;
+    items: WorkItem[];
+    progress?: WorkLoadProgress;
+  }>({ requestKey: "", items: [] });
   const work = useQuery({
     queryKey: workQueryKey,
-    queryFn: () => repo.listMine("all", query.data),
+    queryFn: async () => {
+      const id = ++workLoadId.current;
+      const requestKey = workRequestKey;
+      const active = () =>
+        workLoadId.current === id && requestKey === workRequestKey;
+      setPartialWork({
+        requestKey,
+        items: [],
+        progress: {
+          project: workProjects[0],
+          projectIndex: 0,
+          totalProjects: workProjects.length || 1,
+          completedProjects: 0,
+          phase: "discovering",
+          loadedItems: 0,
+          items: [],
+        },
+      });
+      const items = await repo.listMine("all", query.data, (progress) => {
+        if (!active()) return;
+        setPartialWork((previous) => ({
+          requestKey,
+          items: progress.items.length
+            ? [
+                ...new Map(
+                  [...previous.items, ...progress.items].map((item) => [
+                    item.id,
+                    item,
+                  ]),
+                ).values(),
+              ]
+            : previous.items,
+          progress,
+        }));
+      });
+      if (active())
+        setPartialWork((previous) => ({
+          ...previous,
+          requestKey,
+          items,
+        }));
+      return items;
+    },
     enabled: enabled && hasWorkSelection && !!query.data,
     retry: false,
     staleTime: Infinity,
@@ -236,6 +295,26 @@ export function WorkspaceProvider({
     enabled: enabled && !!targetProject && !!teamQuery.data,
     retry: false,
   });
+  const hasPartialWork = partialWork.requestKey === workRequestKey;
+  const workItems = hasPartialWork ? partialWork.items : (work.data ?? []);
+  const workProgress = hasPartialWork ? partialWork.progress : undefined;
+  const replaceWorkItem = (item: WorkItem) => {
+    setPartialWork((previous) =>
+      previous.requestKey !== workRequestKey
+        ? previous
+        : {
+            ...previous,
+            items: previous.items.map((current) =>
+              current.id === item.id ? item : current,
+            ),
+          },
+    );
+    queryClient.setQueriesData<WorkItem[]>(
+      { queryKey: ["work", scope] },
+      (previous) =>
+        previous?.map((current) => (current.id === item.id ? item : current)),
+    );
+  };
   return (
     <Context.Provider
       value={{
@@ -287,6 +366,9 @@ export function WorkspaceProvider({
         scope,
         meta: enabled ? query.data : undefined,
         work,
+        workItems,
+        workProgress,
+        replaceWorkItem,
         loading: projectQuery.isFetching || query.isFetching,
         error: projectQuery.error ?? query.error,
         refresh: () => {

@@ -285,6 +285,57 @@ it("loads a task's parent story and every sibling including another assignee", a
       ),
   ).toBe(true);
 });
+it("reports discovery and each fetched work-item batch while loading", async () => {
+  const events: import("./types").WorkLoadProgress[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, options: RequestInit) => {
+      if (url.includes("/wiql"))
+        return new Response(
+          JSON.stringify({
+            workItems: Array.from({ length: 201 }, (_, index) => ({
+              id: index + 1,
+            })),
+          }),
+        );
+      const ids = JSON.parse(String(options.body)).ids as number[];
+      return new Response(
+        JSON.stringify({
+          value: ids.map((id) => ({
+            id,
+            rev: 1,
+            fields: {
+              "System.Title": `Task ${id}`,
+              "System.WorkItemType": "Task",
+              "System.State": "New",
+              "System.AssignedTo": "ahmed@example.com",
+              "System.IterationPath": "OMS",
+            },
+          })),
+        }),
+      );
+    }),
+  );
+  const items = await new AzureRepository(settings, auth).listMine(
+    "all",
+    undefined,
+    (event) => events.push(event),
+  );
+  expect(items).toHaveLength(201);
+  expect(events.map((event) => event.phase)).toEqual([
+    "discovering",
+    "loading",
+    "loading",
+    "loading",
+    "complete",
+  ]);
+  expect(events[1]).toMatchObject({ totalItems: 201, loadedItems: 0 });
+  expect(events[2]).toMatchObject({ loadedItems: 200 });
+  expect(events[2].items).toHaveLength(200);
+  expect(events[3]).toMatchObject({ loadedItems: 201 });
+  expect(events[3].items).toHaveLength(1);
+  expect(events[4]).toMatchObject({ totalItems: 201, loadedItems: 201 });
+});
 it("loads all project pages with encoded continuation tokens and deduplicates projects", async () => {
   const fetcher = vi.fn(async (url: string) => {
     const u = new URL(url);
@@ -479,8 +530,9 @@ it("reads every type in task and requirement categories, not just the defaults",
     "SRS Story",
   ]);
 });
-it("queries every project directly without owner, state, sprint or type restrictions and includes non-default types", async () => {
+it("queries every project directly with progress and includes non-default types", async () => {
   const queried: string[] = [];
+  const progress: import("./types").WorkLoadProgress[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, options: RequestInit) => {
@@ -545,11 +597,19 @@ it("queries every project directly without owner, state, sprint or type restrict
   const items = await new AzureRepository(
     { ...settings, project: "" },
     auth,
-  ).listMine("all", metadata);
+  ).listMine("all", metadata, (event) => progress.push(event));
   expect(queried).toHaveLength(2);
   expect(queried[0]).toContain("/company/p1/_apis/wit/wiql");
   expect(queried[1]).toContain("/company/p2/_apis/wit/wiql");
   expect(items.map((i) => i.id)).toEqual([1, 2]);
   expect(items[0].isStory).toBe(true);
   expect(items[1].isTask).toBe(true);
+  expect(
+    progress
+      .filter((event) => event.phase === "complete")
+      .map((event) => [event.project?.name, event.completedProjects]),
+  ).toEqual([
+    ["OMS", 1],
+    ["Platform", 2],
+  ]);
 });

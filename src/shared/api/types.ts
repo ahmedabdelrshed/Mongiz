@@ -74,6 +74,20 @@ export interface WorkItem {
   tags?: string;
   url?: string;
 }
+export interface WorkLoadProgress {
+  project?: Choice;
+  projectIndex: number;
+  totalProjects: number;
+  completedProjects: number;
+  phase: "discovering" | "loading" | "linking" | "complete";
+  /** Matching Azure records discovered for the project currently loading. */
+  totalItems?: number;
+  /** Matching Azure records fetched for the project currently loading. */
+  loadedItems: number;
+  /** Newly available story/task rows. Consumers should merge these by ID. */
+  items: WorkItem[];
+}
+export type WorkLoadListener = (progress: WorkLoadProgress) => void;
 export type Patch = { op: "add" | "test"; path: string; value: unknown }[];
 export interface Repository {
   projects(): Promise<Choice[]>;
@@ -81,7 +95,11 @@ export interface Repository {
   metadata(): Promise<Metadata>;
   workMetadata(projects: Choice[]): Promise<Metadata>;
   defaultTeam(project: string): Promise<Choice>;
-  listMine(assignee?: string, metadata?: Metadata): Promise<WorkItem[]>;
+  listMine(
+    assignee?: string,
+    metadata?: Metadata,
+    onProgress?: WorkLoadListener,
+  ): Promise<WorkItem[]>;
   create(type: string, patch: Patch): Promise<WorkItem>;
   update(item: WorkItem, fields: Record<string, unknown>): Promise<WorkItem>;
   findByMarker(marker: string): Promise<WorkItem | undefined>;

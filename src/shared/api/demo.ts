@@ -149,7 +149,7 @@ export const demoRepository: Repository = {
   metadata: async () => demoMetadata,
   workMetadata: async () => demoMetadata,
   defaultTeam: async () => demoMetadata.teams[0],
-  listMine: async (assignee) => {
+  listMine: async (assignee, _metadata, onProgress) => {
     const items = load();
     const assigned = items.filter(
       (i) =>
@@ -165,7 +165,7 @@ export const demoRepository: Repository = {
     assigned
       .filter((i) => i.type === demoMetadata.taskType && i.parentId)
       .forEach((i) => storyIds.add(i.parentId!));
-    return items.filter(
+    const result = items.filter(
       (i) =>
         assigned.some((a) => a.id === i.id) ||
         storyIds.has(i.id) ||
@@ -173,6 +173,17 @@ export const demoRepository: Repository = {
           i.parentId &&
           storyIds.has(i.parentId)),
     );
+    onProgress?.({
+      project: demoMetadata.projects[0],
+      projectIndex: 0,
+      totalProjects: 1,
+      completedProjects: 1,
+      phase: "complete",
+      totalItems: result.length,
+      loadedItems: result.length,
+      items: result,
+    });
+    return result;
   },
   parentUrl: (id) => `https://dev.azure.com/demo/_apis/wit/workItems/${id}`,
   findByMarker: async (marker) =>

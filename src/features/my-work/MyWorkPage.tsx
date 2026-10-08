@@ -3,7 +3,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Plus, RefreshCw, ExternalLink, Save } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useWorkspace } from "../../app/Workspace";
-import { fields, type WorkItem } from "../../shared/api/types";
+import {
+  fields,
+  type WorkItem,
+  type WorkLoadProgress,
+} from "../../shared/api/types";
 import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
 import { storageKey, useStored } from "../../shared/storage/storage";
 import { ProjectPicker } from "./ProjectPicker";
@@ -50,6 +54,80 @@ function WorkPage({ today }: { today: boolean }) {
     </>
   );
 }
+function WorkLoadPanel({
+  progress,
+  loading,
+  failed,
+  stories,
+  tasks,
+}: {
+  progress?: WorkLoadProgress;
+  loading: boolean;
+  failed: boolean;
+  stories: number;
+  tasks: number;
+}) {
+  const totalProjects = progress?.totalProjects ?? 1;
+  const totalItems = progress?.totalItems;
+  const itemFraction = totalItems ? (progress?.loadedItems ?? 0) / totalItems : 0;
+  const projectValue = Math.min(
+    totalProjects,
+    (progress?.completedProjects ?? 0) + itemFraction,
+  );
+  const itemValue = Math.min(progress?.loadedItems ?? 0, totalItems ?? 0);
+  const projectName = progress?.project?.name ?? "selected project";
+  return (
+    <section
+      className="work-load-progress"
+      aria-label="Work item loading progress"
+      aria-live="polite"
+    >
+      <div className="work-load-progress-heading">
+        <strong>
+          {failed
+            ? "Loading stopped"
+            : loading
+              ? "Loading stories and tasks"
+              : "Loading status"}
+        </strong>
+        <span>
+          {progress?.completedProjects ?? 0} of {totalProjects} projects complete
+        </span>
+      </div>
+      <progress
+        aria-label="Selected projects progress"
+        max={totalProjects}
+        value={projectValue}
+      />
+      {totalItems === undefined ? (
+        <p className="muted">Finding matching work items in {projectName}…</p>
+      ) : totalItems > 0 ? (
+        <>
+          <div className="work-load-progress-heading">
+            <span>{projectName}</span>
+            <span>
+              {itemValue} of {totalItems} Azure items fetched
+            </span>
+          </div>
+          <progress
+            aria-label="Current project items progress"
+            max={totalItems}
+            value={itemValue}
+          />
+          <p className="muted">
+            {Math.max(totalItems - itemValue, 0)} Azure items remaining in this
+            project.
+          </p>
+        </>
+      ) : (
+        <p className="muted">No matching Azure items found in {projectName}.</p>
+      )}
+      <p className="muted">
+        Available so far: {tasks} tasks and {stories} stories.
+      </p>
+    </section>
+  );
+}
 function WorkList({
   today,
   edits,
@@ -79,6 +157,7 @@ function WorkList({
     validIds,
   );
   const query = w.work;
+  const loadedItems = w.workItems;
   const count = Object.keys(edits).length;
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -93,7 +172,7 @@ function WorkList({
   const save = async () => {
     const items = [
       ...new Map(
-        [...(w.hours.data ?? []), ...(query.data ?? [])].map((i) => [i.id, i]),
+        [...(w.hours.data ?? []), ...loadedItems].map((i) => [i.id, i]),
       ).values(),
     ];
     const snapshot = Object.entries(edits);
@@ -132,11 +211,7 @@ function WorkList({
           isTask: change.item.isTask,
           isStory: change.item.isStory,
         };
-        client.setQueriesData<WorkItem[]>(
-          { queryKey: ["work", w.scope] },
-          (previous) =>
-            previous?.map((i) => (i.id === updated.id ? updated : i)),
-        );
+        w.replaceWorkItem(updated);
         client.setQueryData<WorkItem[]>(["hours-work", w.scope], (previous) =>
           previous?.map((i) => (i.id === updated.id ? updated : i)),
         );
@@ -157,7 +232,7 @@ function WorkList({
       );
     else setMessage(`Saved changes to ${saved} work items.`);
   };
-  if ((w.loading && !w.meta) || (query.isPending && w.meta))
+  if (w.loading && !w.meta)
     return <Loading label="Loading all accessible stories and tasks…" />;
   if (w.error)
     return (
@@ -187,7 +262,7 @@ function WorkList({
         Open Settings to connect your Azure organization.
       </Empty>
     );
-  if (query.error)
+  if (query.error && !loadedItems.length)
     return (
       <>
         {w.settings.mode === "azure" && <ProjectPicker disabled={busy} />}
@@ -199,7 +274,7 @@ function WorkList({
     );
   const configFor = (item: WorkItem) =>
     w.meta!.projectConfigs?.[item.project ?? ""];
-  const items = (query.data ?? []).map((i) => ({
+  const items = loadedItems.map((i) => ({
     ...i,
     storyPointField:
       configFor(i)?.storyPointField ??
@@ -408,7 +483,7 @@ function WorkList({
               </button>
             )}
             <button
-              disabled={busy || query.isFetching}
+              disabled={busy}
               onClick={() => {
                 void query.refetch();
                 if (w.settings.mode === "azure") w.refreshHours();
@@ -425,7 +500,26 @@ function WorkList({
         }
       />
       {w.settings.mode === "azure" && <ProjectPicker disabled={busy} />}
-      {w.settings.mode === "azure" && !items.length && (
+      {(query.isFetching || (query.error && !!w.workProgress)) && (
+        <WorkLoadPanel
+          progress={w.workProgress}
+          loading={query.isFetching}
+          failed={!!query.error}
+          tasks={
+            items.filter((i) => i.isTask ?? i.type === w.meta!.taskType).length
+          }
+          stories={
+            items.filter((i) => i.isStory ?? i.type === w.meta!.storyType).length
+          }
+        />
+      )}
+      {query.error && (
+        <Notice tone="error">
+          {query.error.message}
+          <button onClick={() => void query.refetch()}>Retry</button>
+        </Notice>
+      )}
+      {w.settings.mode === "azure" && !items.length && !query.isFetching && !query.error && (
         <Notice tone="error">
           Azure loading finished with no accessible stories or tasks.
           Organization: {w.settings.organization}. Queried projects:{" "}

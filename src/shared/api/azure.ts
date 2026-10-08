@@ -9,6 +9,7 @@ import {
   type ProjectWorkConfig,
   type Repository,
   type Settings,
+  type WorkLoadListener,
   type WorkItem,
 } from "./types";
 export class ApiError extends Error {
@@ -400,23 +401,16 @@ export class AzureRepository implements Repository {
       throw e;
     }
   }
-  private async query(query: string): Promise<RawItem[]> {
+  private async queryIds(query: string): Promise<{ id: number }[]> {
     const r = await this.request<{ workItems: { id: number }[] }>(
       `${this.project ? this.project + "/" : ""}_apis/wit/wiql?$top=1000`,
       "POST",
       { query },
     );
-    const items: RawItem[] = [];
-    for (let i = 0; i < r.workItems.length; i += 200) {
-      const chunk = r.workItems.slice(i, i + 200);
-      const batch = await this.request<{ value: RawItem[] }>(
-        `${this.project ? this.project + "/" : ""}_apis/wit/workitemsbatch`,
-        "POST",
-        { ids: chunk.map((x) => x.id), $expand: "Relations" },
-      );
-      items.push(...batch.value);
-    }
-    return items;
+    return r.workItems;
+  }
+  private async query(query: string): Promise<RawItem[]> {
+    return this.itemsByIds((await this.queryIds(query)).map((item) => item.id));
   }
   async metadata(): Promise<Metadata> {
     const teamPath = `${this.project}/${this.team}/_apis/work/teamsettings`;
@@ -541,27 +535,83 @@ export class AzureRepository implements Repository {
     }
     return items;
   }
-  async listMine(assignee?: string, metadata?: Metadata) {
+  async listMine(
+    assignee?: string,
+    metadata?: Metadata,
+    onProgress?: WorkLoadListener,
+  ) {
     const configs = metadata?.projectConfigs ?? this.configs;
     // Query explicit project contexts. Do not depend on organization-level WIQL
     // or restrict Azure results to only each category's default type.
     if (!this.settings.project && metadata?.projects.length) {
-      const all: WorkItem[] = [];
-      for (const project of metadata.projects) {
+      const all = new Map<number, WorkItem>();
+      let completedProjects = 0;
+      for (const [projectIndex, project] of metadata.projects.entries()) {
+        let totalItems: number | undefined;
+        let loadedItems = 0;
         const repo = new AzureRepository(
           { ...this.settings, project: project.id, team: "" },
           this.auth,
         );
         try {
-          all.push(...(await repo.listMine(assignee, metadata)));
+          const projectItems = await repo.listMine(
+            assignee,
+            metadata,
+            (progress) => {
+              totalItems = progress.totalItems;
+              loadedItems = progress.loadedItems;
+              if (progress.phase === "complete") return;
+              onProgress?.({
+                ...progress,
+                project,
+                projectIndex,
+                totalProjects: metadata.projects.length,
+                completedProjects,
+              });
+            },
+          );
+          for (const item of projectItems) all.set(item.id, item);
+          completedProjects++;
+          onProgress?.({
+            project,
+            projectIndex,
+            totalProjects: metadata.projects.length,
+            completedProjects,
+            phase: "complete",
+            totalItems,
+            loadedItems,
+            items: [],
+          });
         } catch (error) {
           throw new Error(
             `${project.name}: work-item loading failed. ${(error as Error).message}`,
           );
         }
       }
-      return [...new Map(all.map((item) => [item.id, item])).values()];
+      return [...all.values()];
     }
+    const project = metadata?.projects.find(
+      (candidate) =>
+        candidate.id === this.settings.project ||
+        candidate.name === this.settings.project,
+    );
+    const report = (
+      phase: "discovering" | "loading" | "linking" | "complete",
+      totalItems: number | undefined,
+      loadedItems: number,
+      items: WorkItem[] = [],
+    ) =>
+      onProgress?.({
+        project,
+        projectIndex: 0,
+        totalProjects: 1,
+        completedProjects: phase === "complete" ? 1 : 0,
+        phase,
+        totalItems,
+        loadedItems,
+        items,
+      });
+    report("discovering", undefined, 0);
     const clauses = [
       this.settings.project ? "[System.TeamProject] = @project" : "",
       assignee === "all"
@@ -570,22 +620,24 @@ export class AzureRepository implements Repository {
           ? `[System.AssignedTo] = '${escape(assignee)}'`
           : "[System.AssignedTo] = @Me",
     ].filter(Boolean);
-    const assigned: RawItem[] = [];
+    const ids: number[] = [];
     let after = 0;
     while (true) {
       const conditions = [...clauses, `[System.Id] > ${after}`];
-      const page = await this.query(
+      const page = await this.queryIds(
         `SELECT [System.Id] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.Id] ASC`,
       );
-      assigned.push(...page);
+      ids.push(...page.map((item) => item.id));
       if (page.length < 1000) break;
-      const last = Math.max(...page.map((i) => i.id));
+      const last = Math.max(...page.map((item) => item.id));
       if (last <= after)
         throw new Error(
           "Azure returned a repeated work-item page. Retry loading.",
         );
       after = last;
     }
+    const uniqueIds = [...new Set(ids)];
+    report("loading", uniqueIds.length, 0);
     const configFor = (x: RawItem) => {
       const name = String(
         x.fields["System.TeamProject"] ?? this.settings.project,
@@ -609,6 +661,32 @@ export class AzureRepository implements Repository {
         config?.storyTypes ?? [config?.storyType ?? this.storyType]
       ).includes(x.fields["System.WorkItemType"]);
     };
+    const asWorkItem = (item: RawItem): WorkItem => {
+      const mappedItem = mapped(item);
+      return {
+        ...mappedItem,
+        storyPointField:
+          configFor(item)?.storyPointField ?? mappedItem.storyPointField,
+        isStory: isStory(item),
+        isTask: isTask(item),
+      };
+    };
+    const known = new Map<number, RawItem>();
+    const addedWorkItems = (items: RawItem[]) =>
+      items
+        .filter((item) => (isStory(item) || isTask(item)) && !known.has(item.id))
+        .map(asWorkItem);
+    const assigned: RawItem[] = [];
+    let loadedItems = 0;
+    for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+      const chunk = uniqueIds.slice(offset, offset + 200);
+      const batch = await this.itemsByIds(chunk);
+      const next = addedWorkItems(batch);
+      for (const item of batch) known.set(item.id, item);
+      assigned.push(...batch);
+      loadedItems += chunk.length;
+      report("loading", uniqueIds.length, loadedItems, next);
+    }
     if (assigned.length && !assigned.some((x) => isTask(x) || isStory(x))) {
       const types = [
         ...new Set(assigned.map((x) => x.fields["System.WorkItemType"])),
@@ -637,13 +715,24 @@ export class AzureRepository implements Repository {
           `Azure returned ${assigned.length} items but none matched the configured story/task categories. Returned types: ${types}. Refresh project metadata in Settings.`,
         );
     }
-    const known = new Map(assigned.map((x) => [x.id, x]));
     const parentIds = assigned
       .filter(isTask)
       .map((x) => mapped(x).parentId)
       .filter((id): id is number => !!id && !known.has(id));
-    for (const parent of await this.itemsByIds(parentIds))
-      known.set(parent.id, parent);
+    const addRelated = async (
+      relatedIds: number[],
+      keep: (item: RawItem) => boolean = () => true,
+    ) => {
+      const unique = [...new Set(relatedIds)];
+      for (let offset = 0; offset < unique.length; offset += 200) {
+        const batch = await this.itemsByIds(unique.slice(offset, offset + 200));
+        const accepted = batch.filter((item) => keep(item));
+        const next = addedWorkItems(accepted);
+        for (const item of accepted) known.set(item.id, item);
+        report("linking", uniqueIds.length, loadedItems, next);
+      }
+    };
+    await addRelated(parentIds);
     const stories = [...known.values()].filter(isStory);
     const children = stories
       .flatMap(
@@ -653,12 +742,11 @@ export class AzureRepository implements Repository {
             .map((r) => Number(r.url.split("/").pop())) ?? [],
       )
       .filter((id) => Number.isFinite(id) && !known.has(id));
-    for (const child of await this.itemsByIds(children))
-      if (isTask(child)) known.set(child.id, child);
+    await addRelated(children, isTask);
     const allowedProjects = new Set(
       metadata?.projects.map((p) => p.name.toLowerCase()) ?? [],
     );
-    return [...known.values()]
+    const result = [...known.values()]
       .filter(
         (x) =>
           !allowedProjects.size ||
@@ -667,13 +755,9 @@ export class AzureRepository implements Repository {
           ),
       )
       .filter((x) => isStory(x) || isTask(x))
-      .map((x) => ({
-        ...mapped(x),
-        storyPointField:
-          configFor(x)?.storyPointField ?? mapped(x).storyPointField,
-        isStory: isStory(x),
-        isTask: isTask(x),
-      }));
+      .map(asWorkItem);
+    report("complete", uniqueIds.length, loadedItems);
+    return result;
   }
   async create(type: string, patch: Patch) {
     return mapped(
