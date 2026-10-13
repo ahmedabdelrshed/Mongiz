@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, ExternalLink, Save, Pencil, X } from "lucide-react";
+import {
+  Plus,
+  RefreshCw,
+  ExternalLink,
+  Save,
+  Pencil,
+  X,
+  Download,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { useWorkspace } from "../../app/Workspace";
 import {
@@ -142,6 +150,7 @@ function WorkList({
   const w = useWorkspace(),
     client = useQueryClient();
   const [search, setSearch] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [statuses, setStatuses] = useState(["all"]);
   const [destinations, setDestinations] = useState(["current"]);
   const [selectedUsers, setSelectedUsers] = useState(["mine"]);
@@ -413,6 +422,33 @@ function WorkList({
   };
   const visibleTasks = groups.flatMap((g) => g.tasks);
   const visibleStories = groups.flatMap((g) => (g.story ? [g.story] : []));
+  const downloadExcel = async () => {
+    setExporting(true);
+    setError("");
+    setMessage("");
+    const prepare = (item: WorkItem) => ({
+      ...item,
+      project: projectName(item),
+      url: `https://dev.azure.com/${encodeURIComponent(w.settings.mode === "demo" ? "demo" : w.settings.organization)}/${encodeURIComponent(projectName(item))}/_workitems/edit/${item.id}`,
+    });
+    try {
+      const { exportWorkItems } = await import("./exportWorkItems");
+      await exportWorkItems({
+        stories: visibleStories.map(prepare),
+        tasks: visibleTasks.map(prepare),
+        today,
+      });
+      setMessage(
+        `Exported ${visibleStories.length} user stories and ${visibleTasks.length} tasks to Excel. Current local edits are included.`,
+      );
+    } catch (e) {
+      setError(
+        `Excel export failed: ${e instanceof Error ? e.message : "Please try again."}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
   const pickedTasks = visibleTasks.filter((i) => selected.includes(i.id));
   const pickedStories = visibleStories.filter((i) => selected.includes(i.id));
   const toggle = (id: number) =>
@@ -499,6 +535,20 @@ function WorkList({
         subtitle="Stories with tasks matching your user and sprint filters. Edits stay local until Save changes."
         action={
           <div className="actions">
+            <button
+              disabled={
+                busy ||
+                exporting ||
+                query.isFetching ||
+                !!query.error ||
+                !groups.length
+              }
+              title="Export all stories and tasks in the current filtered view, including unsaved changes. Wait for loading to finish before exporting."
+              onClick={() => void downloadExcel()}
+            >
+              <Download size={15} />
+              {exporting ? "Exporting…" : "Export Excel"}
+            </button>
             <button
               className="primary"
               disabled={busy || !count}

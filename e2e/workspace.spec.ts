@@ -1,4 +1,51 @@
 import { test, expect, type Page } from "@playwright/test";
+import ExcelJS from "exceljs";
+
+test("Excel export downloads all filtered rows with local edits, including offscreen tasks", async ({
+  page,
+}) => {
+  const { calls } = await azureFixture(page, true, 500);
+  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(page.getByLabel("Item 1000 estimate hours")).toBeVisible();
+  await page.getByLabel("Item 1000 estimate hours").fill("8");
+  await page.getByLabel("Item 1000 estimate hours").blur();
+  await expect(page.getByLabel("Item 1499 estimate hours")).toHaveCount(0);
+  const pendingDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Excel" }).click();
+  const download = await pendingDownload;
+  expect(download.suggestedFilename()).toMatch(
+    /^mongiz-my-work-\d{4}-\d{2}-\d{2}\.xlsx$/,
+  );
+  expect(await download.failure()).toBeNull();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  expect(workbook.getWorksheet("User Stories")!.rowCount).toBe(2);
+  const tasks = workbook.getWorksheet("Tasks")!;
+  expect(tasks.rowCount).toBe(501);
+  expect(tasks.getCell("A501").value).toBe(1499);
+  expect(tasks.getCell("J2").value).toBe(8);
+  expect(tasks.columnCount).toBe(13);
+  expect(tasks.getCell("D2").value).toEqual({ text: "Item 1000", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/1000" });
+  expect(tasks.getCell("I2").value).toEqual({ text: "Item 10", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10" });
+  expect(workbook.getWorksheet("User Stories")!.columnCount).toBe(10);
+  expect(workbook.getWorksheet("User Stories")!.getCell("D2").value).toEqual({ text: "Item 10", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10" });
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  await page.getByLabel("Search work").fill("Item 1499");
+  const filteredDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Excel" }).click();
+  await workbook.xlsx.readFile((await (await filteredDownload).path())!);
+  expect(workbook.getWorksheet("Tasks")!.rowCount).toBe(2);
+  expect(workbook.getWorksheet("Tasks")!.getCell("A2").value).toBe(1499);
+  expect(workbook.getWorksheet("User Stories")!.getCell("A2").value).toBe(10);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const exportButton = page.getByRole("button", { name: "Export Excel" });
+  await expect(exportButton).toBeVisible();
+  const bounds = (await exportButton.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+});
 async function azureFixture(
   page: Page,
   withHours = false,

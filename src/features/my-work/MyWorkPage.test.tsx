@@ -6,7 +6,57 @@ import { MemoryRouter } from "react-router-dom";
 import { WorkspaceProvider } from "../../app/Workspace";
 import { demoRepository } from "../../shared/api/demo";
 import { MyWorkPage } from "./MyWorkPage";
+import * as excelExport from "./exportWorkItems";
 afterEach(() => vi.restoreAllMocks());
+
+it("exports the filtered view with parent stories and unsaved values without saving", async () => {
+  const download = vi.spyOn(excelExport, "exportWorkItems").mockResolvedValue();
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  setup();
+  const estimate = await screen.findByLabelText(
+    "Build search form estimate hours",
+  );
+  await user.clear(estimate);
+  await user.type(estimate, "5");
+  await user.tab();
+  await user.type(screen.getByLabelText("Search work"), "Build search");
+  await user.click(screen.getByRole("button", { name: "Export Excel" }));
+  await waitFor(() => expect(download).toHaveBeenCalledOnce());
+  const exported = download.mock.calls[0][0];
+  expect(exported.stories.map((item) => item.id)).toEqual([2481]);
+  expect(exported.tasks.map((item) => item.id)).toEqual([2483]);
+  expect(exported.tasks[0]).toMatchObject({ estimate: 5, project: "OMS" });
+  expect(exported.tasks[0].url).toBe("https://dev.azure.com/demo/OMS/_workitems/edit/2483");
+  expect(exported.stories[0].url).toBe("https://dev.azure.com/demo/OMS/_workitems/edit/2481");
+  expect(update).not.toHaveBeenCalled();
+  await screen.findByText(/Exported 1 user stories and 1 tasks to Excel/);
+  await user.clear(screen.getByLabelText("Search work"));
+  await user.click(
+    screen.getByRole("checkbox", { name: /Select task.*Build search form/ }),
+  );
+  await user.click(screen.getByRole("button", { name: "Export Excel" }));
+  await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
+  expect(download.mock.calls[1][0].tasks).toHaveLength(3);
+  await user.type(screen.getByLabelText("Search work"), "no matching work");
+  expect(screen.getByRole("button", { name: "Export Excel" })).toBeDisabled();
+});
+
+it("shows export failures and allows retrying", async () => {
+  const download = vi
+    .spyOn(excelExport, "exportWorkItems")
+    .mockRejectedValueOnce(new Error("Download unavailable"))
+    .mockResolvedValue();
+  const user = userEvent.setup();
+  setup();
+  await screen.findByLabelText("Build search form estimate hours");
+  await user.click(screen.getByRole("button", { name: "Export Excel" }));
+  await screen.findByText("Excel export failed: Download unavailable");
+  expect(screen.getByRole("button", { name: "Export Excel" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Export Excel" }));
+  await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
+  await screen.findByText(/Exported 1 user stories and 3 tasks to Excel/);
+});
 function setup() {
   return render(
     <MemoryRouter>
@@ -287,6 +337,7 @@ it("shows incremental progress and keeps loaded work editable", async () => {
     items: [story, task],
   });
   const estimate = await screen.findByLabelText(`${task.title} estimate hours`);
+  expect(screen.getByRole("button", { name: "Export Excel" })).toBeDisabled();
   expect(screen.getByLabelText("Current project items progress")).toHaveValue(
     2,
   );
@@ -348,6 +399,7 @@ it("keeps partial rows visible when a work load fails", async () => {
   await screen.findByLabelText(`${task.title} state`);
   reject(new Error("Platform: work-item loading failed."));
   await screen.findByText("Platform: work-item loading failed.");
+  expect(screen.getByRole("button", { name: "Export Excel" })).toBeDisabled();
   expect(screen.getByLabelText(`${task.title} state`)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
