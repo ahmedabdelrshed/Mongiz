@@ -72,6 +72,7 @@ export const taskSchema = z.object({
   title: z.string().trim().min(1, "Enter a task title").max(255),
   assignee: z.string(),
   defaultTaskKey: defaultTaskKeySchema.optional(),
+  inheritTitle: z.boolean().optional(),
   inheritEstimate: z.boolean().optional(),
   hours: z.number().finite().min(0).max(10000),
 });
@@ -89,6 +90,12 @@ export const draftSchema = z.object({
   featureId: z.string().min(1, "Select a parent feature"),
   assignee: z.string(),
   taskAssignees: z.partialRecord(defaultTaskKeySchema, z.string()).optional(),
+  taskTitles: z
+    .partialRecord(
+      defaultTaskKeySchema,
+      z.string().trim().min(1, "Enter a shared task title").max(255),
+    )
+    .optional(),
   taskEstimates: z
     .partialRecord(defaultTaskKeySchema, z.number().finite().min(0).max(10000))
     .optional(),
@@ -169,7 +176,24 @@ export function defaultTasks(): TaskDraft[] {
     defaultTaskKey: t.key,
     hours: t.hours,
     inheritEstimate: true,
+    inheritTitle: true,
   }));
+}
+export function effectiveTitle(
+  task: TaskDraft,
+  draft: Pick<Draft, "taskTitles">,
+): string {
+  const definition = defaultTaskDefinitions.find(
+    (t) => t.key === task.defaultTaskKey,
+  );
+  // Older drafts inherit unchanged defaults while keeping customized titles.
+  if (
+    definition &&
+    (task.inheritTitle === true ||
+      (task.inheritTitle === undefined && task.title === definition.title))
+  )
+    return draft.taskTitles?.[definition.key] ?? definition.title;
+  return task.title;
 }
 export function effectiveHours(
   task: TaskDraft,
@@ -190,6 +214,7 @@ export function isDraft(value: unknown): value is Draft {
   const r = draftSchema
     .extend({
       featureId: z.string(),
+      taskTitles: z.partialRecord(defaultTaskKeySchema, z.string()).optional(),
       stories: z.array(
         storySchema.extend({
           title: z.string(),

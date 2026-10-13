@@ -10,6 +10,7 @@ import {
   draftSchema,
   effectiveAssignee,
   effectiveHours,
+  effectiveTitle,
   type Draft,
   type Results,
 } from "./model";
@@ -155,7 +156,7 @@ export async function submitBatch(
     if (!storyId) continue;
     for (const task of story.tasks) {
       const taskPatch = createPatch(
-        task.title,
+        effectiveTitle(task, draft),
         effectiveAssignee(task, draft),
         iteration,
         meta.areaPath,

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { submitBatch } from "./submit";
-import { emptyDraft, newTask, type Results } from "./model";
+import { defaultTasks, emptyDraft, newTask, type Results } from "./model";
 import { demoMetadata, demoRepository } from "../../shared/api/demo";
 import { ApiError } from "../../shared/api/azure";
 import type { Repository, WorkItem } from "../../shared/api/types";
@@ -34,6 +34,32 @@ function repo() {
   };
 }
 describe("recoverable Azure submission", () => {
+  it("submits shared titles and individual overrides as displayed", async () => {
+    const r = repo(),
+      d = batch();
+    d.taskTitles = { frontendImplementation: "Build shared frontend" };
+    const inherited = defaultTasks()[0];
+    d.stories[0].tasks = [
+      inherited,
+      {
+        ...inherited,
+        id: "override",
+        title: "Custom frontend",
+        inheritTitle: false,
+      },
+    ];
+    await submitBatch(d, demoMetadata, r, {}, () => {});
+    expect(r.create.mock.calls[1][1]).toContainEqual({
+      op: "add",
+      path: "/fields/System.Title",
+      value: "Build shared frontend",
+    });
+    expect(r.create.mock.calls[2][1]).toContainEqual({
+      op: "add",
+      path: "/fields/System.Title",
+      value: "Custom frontend",
+    });
+  });
   it("creates stories before tasks, using the returned story ID as parent", async () => {
     const r = repo();
     r.create

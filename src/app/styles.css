@@ -1106,6 +1106,36 @@ a {
   gap: 8px;
   align-items: center;
 }
+.shared-task-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 16px;
+}
+.shared-task-column {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+.shared-task-column h4 {
+  font-size: 13px;
+  color: var(--muted);
+}
+.shared-task-testing {
+  grid-column: 1 / -1;
+}
+.default-task-setting > input {
+  margin-bottom: 8px;
+}
+.task-title-editor {
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .shared-task-columns {
+    grid-template-columns: 1fr;
+  }
+}
 .shared-hours {
   flex-direction: row;
   align-items: center;

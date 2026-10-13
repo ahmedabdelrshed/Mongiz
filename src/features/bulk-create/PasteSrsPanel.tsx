@@ -109,7 +109,7 @@ export function PasteSrsPanel({
         <p className="muted paste-help">
           Each story gets frontend/backend implementation (0.5h each), linking,
           static analysis, code review and unit testing (0.1h each). Owners and
-          hours inherit the shared settings at the top.
+          titles and hours inherit the shared settings at the top.
         </p>
       )}
       {error && <Notice tone="error">{error}</Notice>}

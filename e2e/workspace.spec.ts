@@ -533,6 +533,7 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
 }) => {
   const { calls } = await azureFixture(page);
   await page.getByRole("link", { name: "Create stories", exact: true }).click();
+  await expect(page.getByLabel("Paste SRS requirements")).toHaveCount(0);
   await page.getByLabel("Destination project").selectOption("project1");
   await expect(page.getByLabel("Epic", { exact: true })).toBeEnabled();
   await page.getByLabel("Epic", { exact: true }).selectOption("100");
@@ -545,14 +546,60 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
     .getByLabel("Paste SRS requirements")
     .fill("SRS.1 Print report\nSRS.2 Search devices");
   await page.getByRole("button", { name: "Add 2 stories to batch" }).click();
+  await page
+    .getByLabel("Shared title — Frontend implementation")
+    .fill("Build frontend screens");
+  await expect(page.getByLabel("Story 1 task 1 title")).toHaveValue(
+    "Build frontend screens",
+  );
+  await expect(page.getByLabel("Story 2 task 1 title")).toHaveValue(
+    "Build frontend screens",
+  );
+  const frontend = (await page
+    .getByRole("region", { name: "Frontend shared tasks" })
+    .boundingBox())!;
+  const backend = (await page
+    .getByRole("region", { name: "Backend shared tasks" })
+    .boundingBox())!;
+  expect(frontend.y).toBe(backend.y);
+  expect(frontend.x + frontend.width).toBeLessThan(backend.x);
+  await page.screenshot({
+    path: "test-results/shared-tasks-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileFrontend = (await page
+    .getByRole("region", { name: "Frontend shared tasks" })
+    .boundingBox())!;
+  const mobileBackend = (await page
+    .getByRole("region", { name: "Backend shared tasks" })
+    .boundingBox())!;
+  expect(mobileFrontend.x).toBe(mobileBackend.x);
+  expect(mobileFrontend.y + mobileFrontend.height).toBeLessThan(
+    mobileBackend.y,
+  );
+  await page.screenshot({
+    path: "test-results/shared-tasks-mobile.png",
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Review batch" }).click();
   await page
     .getByRole("button", { name: "Create 2 stories + 18 tasks" })
     .click();
   await expect(page.getByText(/20 of 20 items created/)).toBeVisible();
   await expect(page.getByLabel("Destination project")).toHaveValue("");
+  await expect(page.getByLabel("Paste SRS requirements")).toHaveCount(0);
   const creates = calls.filter((c) => c.url.includes("/workitems/$"));
   expect(creates).toHaveLength(20);
+  expect(
+    creates.filter((call) =>
+      call.body.some(
+        (patch: any) =>
+          patch.path === "/fields/System.Title" &&
+          patch.value === "Build frontend screens",
+      ),
+    ),
+  ).toHaveLength(2);
   expect(
     creates.every(
       (c) => !c.body.some((p: any) => /System.Tags|RemainingWork/.test(p.path)),

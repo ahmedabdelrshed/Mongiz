@@ -6,6 +6,7 @@ import {
   newTask,
   effectiveAssignee,
   effectiveHours,
+  effectiveTitle,
   type Draft,
   type StoryDraft,
   type Results,
@@ -17,6 +18,7 @@ export function StoryEditor({
   assignee,
   taskAssignees,
   taskEstimates,
+  taskTitles,
   sprint,
   results,
   disabled,
@@ -32,6 +34,7 @@ export function StoryEditor({
   assignee: string;
   taskAssignees: Draft["taskAssignees"];
   taskEstimates: Draft["taskEstimates"];
+  taskTitles: Draft["taskTitles"];
   sprint: string;
   results: Results;
   disabled: boolean;
@@ -133,20 +136,46 @@ export function StoryEditor({
           {story.tasks.map((task, i) => (
             <div key={task.id}>
               <div className="task-row">
-                <input
-                  aria-label={`Story ${index + 1} task ${i + 1} title`}
-                  disabled={disabled}
-                  placeholder="Task title"
-                  value={task.title}
-                  onChange={(e) =>
-                    onChange({
-                      ...story,
-                      tasks: story.tasks.map((t) =>
-                        t.id === task.id ? { ...t, title: e.target.value } : t,
-                      ),
-                    })
-                  }
-                />
+                <div className="task-title-editor">
+                  <input
+                    aria-label={`Story ${index + 1} task ${i + 1} title`}
+                    disabled={disabled}
+                    placeholder="Task title"
+                    value={effectiveTitle(task, { taskTitles })}
+                    onChange={(e) =>
+                      onChange({
+                        ...story,
+                        tasks: story.tasks.map((t) =>
+                          t.id === task.id
+                            ? {
+                                ...t,
+                                title: e.target.value,
+                                inheritTitle: false,
+                              }
+                            : t,
+                        ),
+                      })
+                    }
+                  />
+                  {task.defaultTaskKey && (
+                    <button
+                      type="button"
+                      className="estimate-inheritance"
+                      disabled={disabled || task.inheritTitle === true}
+                      aria-label={`Restore shared title for story ${index + 1} task ${i + 1}`}
+                      onClick={() =>
+                        onChange({
+                          ...story,
+                          tasks: story.tasks.map((t) =>
+                            t.id === task.id ? { ...t, inheritTitle: true } : t,
+                          ),
+                        })
+                      }
+                    >
+                      {task.inheritTitle === true ? "Shared" : "Reset"}
+                    </button>
+                  )}
+                </div>
                 <select
                   aria-label={`Story ${index + 1} task ${i + 1} assignee`}
                   disabled={disabled}

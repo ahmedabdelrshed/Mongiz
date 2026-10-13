@@ -80,7 +80,7 @@ Agile calls a requirement “User Story”; Scrum and CMMI use different names. 
 
 Settings, local task templates, daily plans and My Work edit drafts use localStorage. My Work is scoped by account and organization across projects. Nothing in localStorage syncs across devices. Clearing browser data does not delete Azure work items.
 
-**Create Stories is temporary.** The SRS paste box is always visible. Creation fields, shared assignees/estimates, pasted text and submission results are never automatically saved. Leaving the page, reloading, starting a new batch or changing its destination project clears the form. A fully successful submission clears every field, including the destination project. Legacy automatic batch/results records are removed when the page opens. Explicit Export downloads a file only when requested; Import creates a new local batch.
+**Create Stories is temporary.** Only the destination project selector appears initially. The full creation form appears after selecting a project and successfully loading its workspace. Creation fields, shared titles/assignees/estimates, pasted text and submission results are never automatically saved. Leaving the page, reloading, starting a new batch or changing its destination project clears the form. A fully successful submission clears every field, including the destination project. Legacy automatic batch/results records are removed when the page opens. Explicit Export downloads a file only when requested; Import creates a new local batch.
 
 Choose the destination project at the top of Create Stories. Its default team supplies Area path, configured backlog path and sprint choices. Sign-in does not require selecting a project/team. Selecting a project does not change the organization-wide My Work view.
 
@@ -131,7 +131,7 @@ TanStack Query handles remote reads/refetching. Nested form state uses React sta
 
 ## Paste SRS stories
 
-Click **Paste SRS stories** beside **Add story**. Paste text such as:
+Select a **Destination project**, then paste requirements in **Paste SRS stories**, such as:
 
 ```text
 SRS.7.7.48: Create Transform Work Order
@@ -149,7 +149,9 @@ By default, every pasted story receives nine tasks: Implement frontend requireme
 
 ## Shared assignees for default tasks
 
-The **Default task assignees and estimates** section at the top of Create stories has one assignee selector and one estimate input for each of the nine task types. Initially, every selector uses **Same as story assignee**. Choose different users for frontend/backend implementation, source-code linking and static analysis if needed.
+The **Shared tasks** section at the top of Create stories has an editable title, an assignee selector and an estimate input for each of the nine task types. Frontend tasks occupy one column and backend tasks another, with unit testing below. The columns stack on smaller screens. Initially, every assignee selector uses **Same as story assignee**. Choose different users for frontend/backend implementation, source-code linking and static analysis if needed.
+
+Shared title changes update inherited tasks in existing and newly added stories. Editing a task title inside a story creates an individual override. Click **Reset** below that title to restore the shared title. Exported drafts retain shared titles and overrides; Azure receives the titles displayed in the story editors.
 
 Each standard task uses **Shared task assignee** by default. Changing a shared selector updates all tasks of that type that still inherit it, including stories already added to the draft. Explicit individual task choices (including Unassigned) are retained. To restore inheritance for an overridden task, choose **Shared task assignee** again. The effective inherited user is shown in that option.
 
@@ -177,7 +179,7 @@ Current My Work screenshots: `docs/my-work-preview.png` and `docs/my-work-mobile
 
 ## Paste-first creation
 
-There is no separate manual Add Story flow. Enter multiple SRS blocks in the always-visible input and click Add stories to batch. The input clears after adding them and the screen moves to Default task assignees and estimates, rather than the last story. Set shared task owners and estimates there; individual task overrides are retained. All creation fields reset for the next completed batch.
+There is no separate manual Add Story flow. Select a destination project, enter multiple SRS blocks and click Add stories to batch. The input clears after adding them and the screen moves to Shared tasks. Set shared task titles, owners and estimates there; individual task overrides are retained. All creation fields reset for the next completed batch.
 
 ## My Work project tabs and bulk editing
 

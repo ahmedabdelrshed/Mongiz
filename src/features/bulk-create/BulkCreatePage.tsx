@@ -33,6 +33,24 @@ const emptyMeta: Metadata = {
   warnings: [],
 };
 const freshDraft = (): Draft => ({ ...emptyDraft(), stories: [] });
+const sharedTaskGroups = [
+  {
+    label: "Frontend",
+    tasks: defaultTaskDefinitions.filter((task) =>
+      task.key.startsWith("frontend"),
+    ),
+  },
+  {
+    label: "Backend",
+    tasks: defaultTaskDefinitions.filter((task) =>
+      task.key.startsWith("backend"),
+    ),
+  },
+  {
+    label: "Testing",
+    tasks: defaultTaskDefinitions.filter((task) => task.key === "unitTesting"),
+  },
+];
 export function BulkCreatePage() {
   const w = useWorkspace();
   const [created, setCreated] = useState("");
@@ -89,11 +107,12 @@ export function BulkCreatePage() {
           <button onClick={w.refresh}>Retry</button>
         </Notice>
       )}
-      {w.creationLoading ? (
-        <Loading />
-      ) : (
-        <BulkForm key={w.targetProject || "empty"} onCreated={setCreated} />
-      )}
+      {w.targetProject &&
+        (w.creationLoading ? (
+          <Loading label="Loading project workspace…" />
+        ) : w.creationMeta && !w.creationError ? (
+          <BulkForm key={w.targetProject} onCreated={setCreated} />
+        ) : null)}
     </>
   );
 }
@@ -269,7 +288,7 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
           draft; Azure receives no hours on creation.
         </Notice>
       )}
-      {!locked && (
+      {!locked && !!w.targetProject && !!w.creationMeta && (
         <PasteSrsPanel
           stories={draft.stories}
           onAdd={(items) => {
@@ -390,61 +409,85 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
           </label>
         )}
         <div className="shared-task-section" ref={sharedTasks}>
-          <h3>Default task assignees and estimates</h3>
+          <h3>Shared tasks</h3>
           <p className="muted">
-            Change shared owners and hours to update all inherited tasks of that
-            type. Individual overrides stay unchanged.
+            Change shared titles, owners and hours to update all inherited tasks
+            of that type. Individual overrides stay unchanged.
           </p>
-          <div className="form-grid three">
-            {defaultTaskDefinitions.map((t) => (
-              <div className="default-task-setting" key={t.key}>
-                <span>{t.label}</span>
-                <div className="default-task-controls">
-                  <select
-                    aria-label={`Shared assignee — ${t.label}`}
-                    disabled={locked}
-                    value={draft.taskAssignees?.[t.key] ?? "inherit"}
-                    onChange={(e) =>
-                      change({
-                        ...draft,
-                        taskAssignees: {
-                          ...draft.taskAssignees,
-                          [t.key]: e.target.value,
-                        },
-                      })
-                    }
-                  >
-                    <option value="inherit">Same as story assignee</option>
-                    <option value="">Unassigned</option>
-                    {meta.people.map((p) => (
-                      <option key={p.id} value={p.identity}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="shared-hours">
+          <div className="shared-task-columns">
+            {sharedTaskGroups.map((group) => (
+              <section
+                className={`shared-task-column${group.label === "Testing" ? " shared-task-testing" : ""}`}
+                aria-label={`${group.label} shared tasks`}
+                key={group.label}
+              >
+                <h4>{group.label}</h4>
+                {group.tasks.map((t) => (
+                  <div className="default-task-setting" key={t.key}>
+                    <span>{t.label}</span>
                     <input
-                      type="number"
-                      min="0"
-                      max="10000"
-                      step="0.1"
-                      aria-label={`Shared estimate — ${t.label}`}
+                      aria-label={`Shared title — ${t.label}`}
                       disabled={locked}
-                      value={draft.taskEstimates?.[t.key] ?? t.hours}
+                      maxLength={255}
+                      value={draft.taskTitles?.[t.key] ?? t.title}
                       onChange={(e) =>
                         change({
                           ...draft,
-                          taskEstimates: {
-                            ...draft.taskEstimates,
-                            [t.key]: Number(e.target.value) || 0,
+                          taskTitles: {
+                            ...draft.taskTitles,
+                            [t.key]: e.target.value,
                           },
                         })
                       }
                     />
-                    h
-                  </label>
-                </div>
-              </div>
+                    <div className="default-task-controls">
+                      <select
+                        aria-label={`Shared assignee — ${t.label}`}
+                        disabled={locked}
+                        value={draft.taskAssignees?.[t.key] ?? "inherit"}
+                        onChange={(e) =>
+                          change({
+                            ...draft,
+                            taskAssignees: {
+                              ...draft.taskAssignees,
+                              [t.key]: e.target.value,
+                            },
+                          })
+                        }
+                      >
+                        <option value="inherit">Same as story assignee</option>
+                        <option value="">Unassigned</option>
+                        {meta.people.map((p) => (
+                          <option key={p.id} value={p.identity}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="shared-hours">
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          step="0.1"
+                          aria-label={`Shared estimate — ${t.label}`}
+                          disabled={locked}
+                          value={draft.taskEstimates?.[t.key] ?? t.hours}
+                          onChange={(e) =>
+                            change({
+                              ...draft,
+                              taskEstimates: {
+                                ...draft.taskEstimates,
+                                [t.key]: Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                        h
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </section>
             ))}
           </div>
         </div>
@@ -466,6 +509,7 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
           assignee={draft.assignee}
           taskAssignees={draft.taskAssignees}
           taskEstimates={draft.taskEstimates}
+          taskTitles={draft.taskTitles}
           sprint={iteration}
           results={resultMap}
           disabled={locked}

@@ -3,6 +3,8 @@ import {
   copyTasks,
   draftSchema,
   effectiveAssignee,
+  effectiveTitle,
+  defaultTasks,
   emptyDraft,
   isDraft,
   newTask,
@@ -98,6 +100,23 @@ describe("bulk creation rules", () => {
     });
     expect(patch[0].value).toBe("Story");
   });
+});
+
+it("validates shared titles and preserves older individual title overrides", () => {
+  const draft = emptyDraft();
+  draft.featureId = "120";
+  draft.stories[0].title = "Story";
+  const task = defaultTasks()[0];
+  delete task.inheritTitle;
+  draft.taskTitles = { frontendImplementation: "New frontend title" };
+  expect(effectiveTitle(task, draft)).toBe("New frontend title");
+  task.title = "Legacy custom title";
+  expect(effectiveTitle(task, draft)).toBe("Legacy custom title");
+  draft.taskTitles.frontendImplementation = " ";
+  expect(isDraft(draft)).toBe(true);
+  expect(draftSchema.safeParse(draft).success).toBe(false);
+  draft.taskTitles.frontendImplementation = "x".repeat(256);
+  expect(draftSchema.safeParse(draft).success).toBe(false);
 });
 
 describe("default pasted task assignment", () => {
