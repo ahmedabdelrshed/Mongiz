@@ -4,6 +4,7 @@ import {
   isIterationCurrent,
   storyPointFields,
   type Choice,
+  type Iteration,
   type Metadata,
   type Patch,
   type Person,
@@ -156,6 +157,51 @@ export class AzureRepository implements Repository {
     );
     return r.value;
   }
+  async projectIterations(project: Choice): Promise<Iteration[]> {
+    interface Node {
+      id: number;
+      identifier?: string;
+      name: string;
+      hasChildren?: boolean;
+      children?: Node[];
+      attributes?: { startDate?: string; finishDate?: string };
+    }
+    const base = `${encodeURIComponent(project.id)}/_apis/wit/classificationnodes/iterations`;
+    const load = (segments: string[]) =>
+      this.request<Node>(
+        `${base}${segments.length ? "/" + segments.map(encodeURIComponent).join("/") : ""}?$depth=2`,
+      );
+    const iterations = new Map<string, Iteration>();
+    const visit = async (node: Node, segments: string[]) => {
+      // Classification-node paths contain a virtual "Iteration" segment;
+      // work item fields use the project name followed by actual node names.
+      const path = [project.name, ...segments].join("\\");
+      const iteration = {
+        id: node.identifier ?? String(node.id),
+        name: node.name,
+        path,
+        project: project.name,
+        startDate: node.attributes?.startDate,
+        finishDate: node.attributes?.finishDate,
+      };
+      iterations.set(path, {
+        ...iteration,
+        current: isIterationCurrent(iteration),
+      });
+      let children = node.children;
+      if (node.hasChildren && !children?.length) {
+        children = (await load(segments)).children;
+        if (!children?.length)
+          throw new Error(
+            `Could not load child iterations of ${path}. Retry loading iterations.`,
+          );
+      }
+      for (const child of children ?? [])
+        await visit(child, [...segments, child.name]);
+    };
+    await visit(await load([]), []);
+    return [...iterations.values()];
+  }
   async defaultTeam(project: string): Promise<Choice> {
     const detail = await this.request<{ defaultTeam?: Choice }>(
       `_apis/projects/${encodeURIComponent(project)}`,
@@ -264,7 +310,10 @@ export class AzureRepository implements Repository {
                     finishDate: s.attributes.finishDate,
                     project: project.name,
                   };
-                  return { ...iteration, current: isIterationCurrent(iteration) };
+                  return {
+                    ...iteration,
+                    current: isIterationCurrent(iteration),
+                  };
                 }),
               );
             })(),
@@ -681,7 +730,9 @@ export class AzureRepository implements Repository {
     const known = new Map<number, RawItem>();
     const addedWorkItems = (items: RawItem[]) =>
       items
-        .filter((item) => (isStory(item) || isTask(item)) && !known.has(item.id))
+        .filter(
+          (item) => (isStory(item) || isTask(item)) && !known.has(item.id),
+        )
         .map(asWorkItem);
     const assigned: RawItem[] = [];
     let loadedItems = 0;

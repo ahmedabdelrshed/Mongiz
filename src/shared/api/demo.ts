@@ -148,6 +148,17 @@ export const demoRepository: Repository = {
   teams: async () => demoMetadata.teams,
   metadata: async () => demoMetadata,
   workMetadata: async () => demoMetadata,
+  projectIterations: async (project) => [
+    {
+      id: project.id,
+      name: project.name,
+      path: project.name,
+      project: project.name,
+    },
+    ...demoMetadata.iterations.filter(
+      (iteration) => iteration.project === project.name,
+    ),
+  ],
   defaultTeam: async () => demoMetadata.teams[0],
   listMine: async (assignee, _metadata, onProgress) => {
     const items = load();

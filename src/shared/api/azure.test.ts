@@ -13,6 +13,132 @@ const auth = {
   authorizationHeader: async () => "Bearer test-access-token",
 } as AuthSession;
 afterEach(() => vi.unstubAllGlobals());
+it("loads the full project iteration tree, expanding truncated branches with encoded paths", async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    const u = new URL(url);
+    expect(u.searchParams.get("$depth")).toBe("2");
+    expect(u.searchParams.get("api-version")).toBe("7.1");
+    if (u.pathname.endsWith("/classificationnodes/iterations"))
+      return new Response(
+        JSON.stringify({
+          id: 1,
+          name: "OMS",
+          hasChildren: true,
+          children: [
+            {
+              id: 2,
+              name: "Release 2026",
+              hasChildren: true,
+              children: [
+                {
+                  id: 3,
+                  identifier: "sprint-guid",
+                  name: "Sprint #1",
+                  hasChildren: true,
+                  attributes: {
+                    startDate: "2026-10-01",
+                    finishDate: "2026-10-14",
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+    expect(u.pathname).toBe(
+      "/company/OMS/_apis/wit/classificationnodes/iterations/Release%202026/Sprint%20%231",
+    );
+    return new Response(
+      JSON.stringify({
+        id: 3,
+        name: "Sprint #1",
+        hasChildren: true,
+        children: [
+          { id: 4, name: "Another team's sprint", hasChildren: false },
+        ],
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const repo = new AzureRepository({ ...settings, project: "" }, auth);
+  const iterations = await repo.projectIterations({ id: "OMS", name: "OMS" });
+  expect(iterations.map((i) => i.path)).toEqual([
+    "OMS",
+    "OMS\\Release 2026",
+    "OMS\\Release 2026\\Sprint #1",
+    "OMS\\Release 2026\\Sprint #1\\Another team's sprint",
+  ]);
+  expect(iterations[2]).toMatchObject({
+    id: "sprint-guid",
+    project: "OMS",
+    startDate: "2026-10-01",
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+it("reports inaccessible and incomplete iteration trees instead of offering partial destinations", async () => {
+  const repo = new AzureRepository(settings, auth);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: "No iteration access" }), {
+          status: 403,
+        }),
+    ),
+  );
+  await expect(
+    repo.projectIterations({ id: "OMS", name: "OMS" }),
+  ).rejects.toMatchObject({ status: 403 });
+  const fetcher = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ id: 1, name: "OMS", hasChildren: true })),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  await expect(
+    repo.projectIterations({ id: "OMS", name: "OMS" }),
+  ).rejects.toThrow(/Could not load child iterations/);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+it("updates an iteration through the organization repository with revision protection", async () => {
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          id: 1,
+          rev: 8,
+          fields: {
+            "System.Title": "Story",
+            "System.WorkItemType": "User Story",
+            "System.State": "Active",
+            "System.TeamProject": "OMS",
+            "System.IterationPath": "OMS\\Next",
+          },
+        }),
+      ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const repo = new AzureRepository({ ...settings, project: "" }, auth);
+  await repo.update(
+    {
+      id: 1,
+      rev: 7,
+      title: "Story",
+      type: "User Story",
+      state: "Active",
+      assignedTo: "",
+      iteration: "OMS",
+    },
+    { "System.IterationPath": "OMS\\Next" },
+  );
+  const [url, options] = vi.mocked(fetch).mock.calls[0];
+  expect(url).toBe(
+    "https://dev.azure.com/company/_apis/wit/workitems/1?api-version=7.1",
+  );
+  expect(JSON.parse(options!.body as string)).toEqual([
+    { op: "test", path: "/rev", value: 7 },
+    { op: "add", path: "/fields/System.IterationPath", value: "OMS\\Next" },
+  ]);
+});
 it("sends authenticated JSON Patch to create a story", async () => {
   const fetcher = vi.fn(
     async (_url: string, _options: RequestInit) =>

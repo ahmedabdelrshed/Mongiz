@@ -111,6 +111,7 @@ export interface Repository {
   teams(project: string): Promise<Choice[]>;
   metadata(): Promise<Metadata>;
   workMetadata(projects: Choice[]): Promise<Metadata>;
+  projectIterations(project: Choice): Promise<Iteration[]>;
   defaultTeam(project: string): Promise<Choice>;
   listMine(
     assignee?: string,

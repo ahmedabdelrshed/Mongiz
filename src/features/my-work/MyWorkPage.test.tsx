@@ -1,4 +1,4 @@
-import { expect, it, vi, afterEach } from "vitest";
+import { expect, it, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -7,7 +7,12 @@ import { WorkspaceProvider } from "../../app/Workspace";
 import { demoRepository } from "../../shared/api/demo";
 import { MyWorkPage } from "./MyWorkPage";
 import * as excelExport from "./exportWorkItems";
-afterEach(() => vi.restoreAllMocks());
+// The work fixtures belong to Sprint 12, rather than whichever sprint is current when tests run.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+});
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it("exports the filtered view with parent stories and unsaved values without saving", async () => {
   const download = vi.spyOn(excelExport, "exportWorkItems").mockResolvedValue();

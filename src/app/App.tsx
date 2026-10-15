@@ -8,10 +8,12 @@ import {
   ArrowUpRight,
   Command,
   Cloud,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useWorkspace } from "./Workspace";
 import { BulkCreatePage } from "../features/bulk-create/BulkCreatePage";
 import { MyWorkPage } from "../features/my-work/MyWorkPage";
+import { MoveStoriesPage } from "../features/move-stories/MoveStoriesPage";
 import { TemplatesPage } from "../features/templates/TemplatesPage";
 import { SettingsPage } from "../features/project/SettingsPage";
 import { Notice } from "../shared/ui/Common";
@@ -19,6 +21,7 @@ export function App() {
   const w = useWorkspace();
   const nav = [
     { to: "/work", name: "My work", icon: ListTodo },
+    { to: "/move-stories", name: "Move stories", icon: ArrowRightLeft },
     { to: "/create", name: "Create stories", icon: Layers },
     { to: "/today", name: "Today’s plan", icon: Sun },
     { to: "/templates", name: "Task templates", icon: Copy },
@@ -84,6 +87,16 @@ export function App() {
           {w.storageError && <Notice tone="error">{w.storageError}</Notice>}
           {w.error && <Notice tone="error">{w.error.message}</Notice>}
           <Routes>
+            <Route
+              path="/move-stories"
+              element={
+                w.account ? (
+                  <MoveStoriesPage />
+                ) : (
+                  <Navigate to="/settings" replace />
+                )
+              }
+            />
             <Route path="/settings" element={<SettingsPage />} />
             <Route
               path="/"

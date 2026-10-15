@@ -314,6 +314,9 @@ export function WorkspaceProvider({
       (previous) =>
         previous?.map((current) => (current.id === item.id ? item : current)),
     );
+    queryClient.setQueryData<WorkItem[]>(["hours-work", scope], (previous) =>
+      previous?.map((current) => (current.id === item.id ? item : current)),
+    );
   };
   return (
     <Context.Provider

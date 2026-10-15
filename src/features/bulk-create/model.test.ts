@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   copyTasks,
   draftSchema,
@@ -12,6 +12,12 @@ import {
 } from "./model";
 import { resolveIteration, createPatch } from "./submit";
 import { demoMetadata } from "../../shared/api/demo";
+// The demo fixtures place Sprint 12 in early October; keep these tests independent of today's date.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 describe("bulk creation rules", () => {
   it("inherits assignee and preserves an explicit override and unassignment", () => {
     const d = emptyDraft();

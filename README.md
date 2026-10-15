@@ -30,6 +30,7 @@ The ZIP deliberately excludes node_modules, generated build output and credentia
 
 ## Included features
 
+- Move stories: choose any accessible project, search/filter its stories, and move selected stories to any project iteration or backlog. Optionally include direct child tasks by status (none selected by default, including Closed only when explicitly selected). Review exact changes, see per-item results, and retry unfinished changes after refreshing.
 - Bulk create multiple stories under a selected Epic → Feature.
 - Paste SRS requirements: every new line beginning with an SRS identifier starts a separate story. Review the parsed titles (descriptions start empty) and optionally copy tasks from the first story.
 - Set the shared assignee once; tasks inherit it or override it individually.

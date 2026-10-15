@@ -14,6 +14,7 @@ export function SearchableMultiSelect({
   onChange,
   allValue,
   disabled = false,
+  allowEmpty = false,
 }: {
   label: string;
   options: MultiSelectOption[];
@@ -22,23 +23,27 @@ export function SearchableMultiSelect({
   /** Selecting this option clears every specific selection. */
   allValue: string;
   disabled?: boolean;
+  /** Allow clearing the last option instead of reverting to allValue. */
+  allowEmpty?: boolean;
 }) {
   const selected = options.filter((option) => value.includes(option.value));
   const selectedLabel = value.includes(allValue)
     ? (options.find((option) => option.value === allValue)?.label ?? "All")
-    : selected.length === 1
-      ? selected[0].label
-      : `${selected.length} selected`;
+    : !selected.length && allowEmpty
+      ? "None selected"
+      : selected.length === 1
+        ? selected[0].label
+        : `${selected.length} selected`;
   const choose = (optionValue: string) => {
     if (optionValue === allValue) {
-      onChange([allValue]);
+      onChange(allowEmpty && value.includes(allValue) ? [] : [allValue]);
       return;
     }
     const next = value.filter((current) => current !== allValue);
     const toggled = next.includes(optionValue)
       ? next.filter((current) => current !== optionValue)
       : [...next, optionValue];
-    onChange(toggled.length ? toggled : [allValue]);
+    onChange(toggled.length || allowEmpty ? toggled : [allValue]);
   };
   return (
     <Popover.Root>
@@ -70,6 +75,14 @@ export function SearchableMultiSelect({
               />
             </div>
             <Command.List>
+              {allowEmpty && value.length > 0 && (
+                <Command.Item
+                  value="Clear selection"
+                  onSelect={() => onChange([])}
+                >
+                  Clear selection
+                </Command.Item>
+              )}
               <Command.Empty>No matching options.</Command.Empty>
               {options.map((option) => {
                 const checked = value.includes(option.value);
