@@ -1,4 +1,30 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
+.story-point-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  align-items: end;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.story-point-summary {
+  align-self: center;
+  overflow-wrap: anywhere;
+}
+.story-point-row input {
+  width: 100%;
+}
+.story-point-error {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .story-point-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .story-point-summary {
+    grid-column: 1 / -1;
+  }
+}
 .move-stories {
   display: grid;
   gap: 18px;

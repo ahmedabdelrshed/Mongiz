@@ -1,6 +1,61 @@
 import { test, expect, type Page } from "@playwright/test";
 import ExcelJS from "exceljs";
 
+test("Story points navigation loads a project, filters stories and saves each project's estimation field on desktop and mobile", async ({ page }, testInfo) => {
+  const { calls } = await azureFixture(page, true);
+  await page.route("**/_apis/wit/classificationnodes/iterations?*", async (route) => {
+    const project = route.request().url().includes("project2") ? "Platform" : "OMS";
+    await route.fulfill({ json: {
+      id: 1, name: project, children: [{ id: 2, name: "Sprint 1" }],
+    } });
+  });
+  await page.getByRole("link", { name: "Story points", exact: true }).click();
+  await expect(page).toHaveURL(/\/story-points$/);
+  await page.getByLabel("Project for story points").selectOption("project1");
+  await expect(page.getByLabel("Story points for #10", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Story points for #20", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Story points for #11", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Filter sprint", exact: true }).click();
+  await page.getByRole("dialog").getByText("OMS\\Sprint 1", { exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Filter story state", exact: true }).click();
+  await page.getByRole("dialog").getByText("Active", { exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("No matching stories")).toBeVisible();
+  await page.getByRole("button", { name: "Filter story state", exact: true }).click();
+  await page.getByRole("dialog").getByText("New", { exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Story points for #10", { exact: true }).fill("3");
+  await page.getByRole("button", { name: "Save story points for #10" }).click();
+  await expect(page.getByText("Saved 3 story points for #10.")).toBeVisible();
+  await expect(page.getByLabel("Story points for #10", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("All stories have story points")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByLabel("Project for story points").selectOption("project2");
+  await expect(page.getByLabel("Story points for #20", { exact: true })).toBeVisible();
+  for (const element of [page.getByLabel("Story points for #20", { exact: true }), page.getByRole("button", { name: "Save story points for #20" })]) {
+    const bounds = (await element.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: testInfo.outputPath("story-points-mobile.png"), fullPage: true });
+  await page.getByLabel("Story points for #20", { exact: true }).fill("0");
+  await page.getByRole("button", { name: "Save story points for #20" }).click();
+  await expect(page.getByText("Saved 0 story points for #20.")).toBeVisible();
+  const patches = calls.filter((call) => Array.isArray(call.body));
+  expect(patches.map((call) => call.body)).toEqual([
+    [
+      { op: "test", path: "/rev", value: 1 },
+      { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.StoryPoints", value: 3 },
+    ],
+    [
+      { op: "test", path: "/rev", value: 1 },
+      { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.Effort", value: 0 },
+    ],
+  ]);
+});
+
 test("Excel export downloads all filtered rows with local edits, including offscreen tasks", async ({
   page,
 }) => {

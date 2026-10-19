@@ -317,6 +317,12 @@ export function WorkspaceProvider({
     queryClient.setQueryData<WorkItem[]>(["hours-work", scope], (previous) =>
       previous?.map((current) => (current.id === item.id ? item : current)),
     );
+    for (const feature of ["move-stories-items", "story-points-items"])
+      queryClient.setQueriesData<WorkItem[]>(
+        { queryKey: [feature, scope] },
+        (previous) =>
+          previous?.map((current) => (current.id === item.id ? item : current)),
+      );
   };
   return (
     <Context.Provider
