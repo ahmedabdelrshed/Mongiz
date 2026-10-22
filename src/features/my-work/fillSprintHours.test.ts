@@ -27,7 +27,7 @@ function task(
 }
 const options = {
   minimum: 30,
-  category: "auto" as const,
+  categories: ["auto"] as const,
   supportedFields: (_item: WorkItem) => Object.values(fields),
   backlogPath: (item: WorkItem) => item.project ?? "OMS",
 };
@@ -109,7 +109,11 @@ it("recognizes category title variants and honors explicit category choices", ()
     ["review", 3],
     ["implementation", 1],
   ] as const) {
-    const result = fillSprintHours({ ...options, tasks, category });
+    const result = fillSprintHours({
+      ...options,
+      tasks,
+      categories: [category],
+    });
     const allocated = result.changes.filter(
       ({ values }) => fields.estimate in values,
     );
@@ -118,6 +122,30 @@ it("recognizes category title variants and honors explicit category choices", ()
     expect(result.changes).toHaveLength(3);
     expect(result.summaries[0].completionOnly).toBe(2);
   }
+});
+
+it("shares the gap across all selected categories while preserving other estimates", () => {
+  const tasks = [
+    task(1, "Implement frontend"),
+    task(2, "Unit testing"),
+    task(3, "Code review"),
+  ];
+  const result = fillSprintHours({
+    ...options,
+    tasks,
+    categories: ["implementation", "review"],
+  });
+  expect(result.changes.map(({ item, values }) => [item.id, values])).toEqual([
+    [1, { [fields.estimate]: 13.5, [fields.completed]: 13.5 }],
+    [2, { [fields.completed]: 3 }],
+    [3, { [fields.estimate]: 13.5, [fields.completed]: 13.5 }],
+  ]);
+  expect(result.summaries[0]).toMatchObject({
+    before: 9,
+    added: 21,
+    changed: 2,
+    completionOnly: 1,
+  });
 });
 
 it("separates projects/sprints and unparented tasks, skips backlog, and assigns rounding by ID", () => {
@@ -145,7 +173,7 @@ it("skips unsupported tasks with category fallback and explains unfillable or fu
   expect(result.changes.map(({ item }) => item.id)).toEqual([2]);
   expect(result.summaries[0].unsupported).toBe(1);
   expect(
-    fillSprintHours({ ...options, tasks, category: "review" }).summaries[0]
+    fillSprintHours({ ...options, tasks, categories: ["review"] }).summaries[0]
       .reason,
   ).toMatch(/No eligible/);
   expect(
@@ -222,7 +250,7 @@ it("matches completion at/above target or without eligible categories while resp
       ...options,
       tasks,
       minimum,
-      category: "implementation",
+      categories: ["implementation"],
       supportedFields,
     });
     expect(result.changes.map(({ item, values }) => [item.id, values])).toEqual(

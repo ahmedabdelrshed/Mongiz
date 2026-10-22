@@ -760,8 +760,15 @@ test("My Work category actions fit mobile and save only the searched task's hour
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
   await expect(page.getByLabel("Unit testing estimate hours")).toBeVisible();
-  await page.getByLabel("Search work").fill(" #1000 ");
   const actions = page.getByRole("region", { name: "Fill sprint hours" });
+  await actions.getByRole("button", { name: "Implementation", exact: true }).click();
+  await actions.getByRole("button", { name: "Code review", exact: true }).click();
+  await expect(actions.getByRole("button", { name: "Implementation", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(actions.getByRole("button", { name: "Code review", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(actions.getByRole("button", { name: "Auto", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await actions.getByRole("button", { name: "Auto", exact: true }).click();
+  await expect(actions.getByRole("button", { name: "Code review", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await page.getByLabel("Search work").fill(" #1000 ");
   await actions.getByRole("button", { name: "Testing", exact: true }).click();
   await expect(actions.getByRole("button", { name: "Testing", exact: true })).toHaveAttribute("aria-pressed", "true");
   await actions.getByRole("button", { name: "Fill sprint minimum" }).click();

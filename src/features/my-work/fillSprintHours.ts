@@ -37,18 +37,19 @@ export interface SprintFillSummary {
 export function fillSprintHours({
   tasks,
   minimum,
-  category,
+  categories,
   supportedFields,
   backlogPath,
 }: {
   tasks: WorkItem[];
   minimum: number;
-  category: HourCategory;
+  categories: readonly HourCategory[];
   supportedFields: (item: WorkItem) => string[];
   backlogPath: (item: WorkItem) => string;
 }): { changes: HourAllocation[]; summaries: SprintFillSummary[] } {
   if (!Number.isFinite(minimum) || minimum < 0 || minimum > 10000)
     throw new Error("Enter a sprint minimum between 0 and 10,000 hours.");
+  const automatic = !categories.length || categories.includes("auto");
   const buckets = new Map<string, WorkItem[]>();
   for (const task of tasks) {
     for (const value of [task.estimate, task.completed, task.remaining]) {
@@ -122,7 +123,7 @@ export function fillSprintHours({
     const byStory = new Map<string, WorkItem[]>();
     for (const { task, kind, supported } of classified) {
       if (!kind || !supported) continue;
-      if (category !== "auto" && kind !== category) continue;
+      if (!automatic && !categories.includes(kind)) continue;
       // Unparented tasks are independent rather than siblings of each other.
       const key =
         task.parentId === undefined
@@ -134,7 +135,7 @@ export function fillSprintHours({
     }
     const eligible = [...byStory.values()]
       .flatMap((siblings) => {
-        if (category !== "auto") return siblings;
+        if (!automatic) return siblings;
         const priority = ["implementation", "testing", "review"] as const;
         const first = priority.find((kind) =>
           siblings.some((task) => taskHourCategory(task.title) === kind),
@@ -145,7 +146,7 @@ export function fillSprintHours({
       })
       .sort((a, b) => a.id - b.id);
     if (!eligible.length) {
-      summary.reason = "No eligible tasks for this category";
+      summary.reason = "No eligible tasks for the selected categories";
       continue;
     }
     // Only the first IDs receive a share when the gap is smaller than one

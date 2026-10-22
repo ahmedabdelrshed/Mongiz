@@ -173,7 +173,9 @@ function WorkList({
   const w = useWorkspace(),
     client = useQueryClient();
   const [search, setSearch] = useState("");
-  const [hourCategory, setHourCategory] = useState<HourCategory>("auto");
+  const [selectedHourCategories, setSelectedHourCategories] = useState<
+    HourCategory[]
+  >(["auto"]);
   const [exporting, setExporting] = useState(false);
   const [statuses, setStatuses] = useState(["all"]);
   const [destinations, setDestinations] = useState(["current"]);
@@ -438,7 +440,7 @@ function WorkList({
       const result = fillSprintHours({
         tasks: visibleTasks,
         minimum: target.min,
-        category: hourCategory,
+        categories: selectedHourCategories,
         supportedFields,
         backlogPath: (item) =>
           configFor(item)?.backlogPath ?? w.meta!.backlogPath,
@@ -778,16 +780,29 @@ function WorkList({
           <div
             className="actions"
             role="group"
-            aria-label="Hour allocation category"
+            aria-label="Hour allocation categories"
           >
             {hourCategories.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
-                aria-pressed={hourCategory === value}
-                className={hourCategory === value ? "primary" : ""}
+                aria-pressed={selectedHourCategories.includes(value)}
+                className={
+                  selectedHourCategories.includes(value) ? "primary" : ""
+                }
                 disabled={busy}
-                onClick={() => setHourCategory(value)}
+                onClick={() =>
+                  setSelectedHourCategories((previous) => {
+                    if (value === "auto") return ["auto"];
+                    const manual = previous.filter(
+                      (category) => category !== "auto",
+                    );
+                    const next = manual.includes(value)
+                      ? manual.filter((category) => category !== value)
+                      : [...manual, value];
+                    return next.length ? next : ["auto"];
+                  })
+                }
               >
                 {label}
               </button>
@@ -809,9 +824,10 @@ function WorkList({
           </button>
           <p className="muted">
             Fill each filtered sprint to {target.min}h, including closed and
-            offscreen tasks. Auto uses implementation, then testing, then code
-            review per story. All filtered estimates count toward the total.
-            Added hours are shared equally. Completed Work matches every
+            offscreen tasks. Choose multiple categories to share added hours
+            across their tasks. Auto uses implementation, then testing, then
+            code review per story. All filtered estimates count toward the
+            total. Added hours are shared equally. Completed Work matches every
             estimated task, including tasks receiving no added hours. State and
             Remaining Work stay unchanged. Save changes to apply.
           </p>

@@ -241,6 +241,45 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
   ).toBe(5);
 });
 
+it("selects implementation and review together, toggles categories, and restores Auto", async () => {
+  await hourTaskFixture();
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  setup();
+  const implementation = await screen.findByRole("button", {
+    name: "Implementation",
+  });
+  const review = screen.getByRole("button", { name: "Code review" });
+  const auto = screen.getByRole("button", { name: "Auto" });
+  await user.click(implementation);
+  await user.click(review);
+  expect(implementation).toHaveAttribute("aria-pressed", "true");
+  expect(review).toHaveAttribute("aria-pressed", "true");
+  expect(auto).toHaveAttribute("aria-pressed", "false");
+  await user.click(screen.getByRole("button", { name: "Fill sprint minimum" }));
+  for (const title of [
+    "Implement frontend requirements",
+    "Backend code review",
+  ]) {
+    expect(screen.getByLabelText(`${title} estimate hours`)).toHaveValue(13.5);
+    expect(screen.getByLabelText(`${title} completed hours`)).toHaveValue(13.5);
+  }
+  expect(screen.getByLabelText("Unit testing estimate hours")).toHaveValue(3);
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(3);
+  expect(update).not.toHaveBeenCalled();
+  await user.click(implementation);
+  expect(implementation).toHaveAttribute("aria-pressed", "false");
+  expect(review).toHaveAttribute("aria-pressed", "true");
+  await user.click(review);
+  expect(auto).toHaveAttribute("aria-pressed", "true");
+  await user.click(implementation);
+  await user.click(review);
+  await user.click(auto);
+  expect(auto).toHaveAttribute("aria-pressed", "true");
+  expect(implementation).toHaveAttribute("aria-pressed", "false");
+  expect(review).toHaveAttribute("aria-pressed", "false");
+});
+
 it("fills a searched testing task alone and rejects cleared hour drafts before staging more changes", async () => {
   await hourTaskFixture();
   const update = vi.spyOn(demoRepository, "update");
