@@ -23,7 +23,20 @@ import { storageKey, useStored } from "../../shared/storage/storage";
 import { ProjectPicker } from "./ProjectPicker";
 import { VirtualWorkList } from "./VirtualWorkList";
 import { HoursPanel } from "./HoursPanel";
-import { owns, sprintMatches, uniqueSprints } from "./filters";
+import {
+  DEFAULT_SPRINT_TARGET,
+  isSprintTarget,
+  owns,
+  sprintMatches,
+  uniqueSprints,
+  type SprintTarget,
+} from "./filters";
+import { groupWorkItems } from "./workGroups";
+import {
+  fillSprintHours,
+  hourCategories,
+  type HourCategory,
+} from "./fillSprintHours";
 import { planKey, validIds } from "../daily-plan/model";
 import {
   BULK_ESTIMATE_EXCLUDED_HOURS,
@@ -46,6 +59,11 @@ export function MyWorkPage({ today = false }: { today?: boolean }) {
 }
 function WorkPage({ today }: { today: boolean }) {
   const w = useWorkspace();
+  const [target, setTarget, targetError] = useStored(
+    storageKey(w.scope, "sprint-target"),
+    DEFAULT_SPRINT_TARGET,
+    isSprintTarget,
+  );
   const [edits, setEdits, editError] = useStored<Edits>(
     storageKey(w.scope, "work-edits"),
     {},
@@ -53,10 +71,14 @@ function WorkPage({ today }: { today: boolean }) {
   );
   return (
     <>
-      {!today && <HoursPanel edits={edits} />}
+      {targetError && <Notice tone="error">{targetError}</Notice>}
+      {!today && (
+        <HoursPanel edits={edits} target={target} setTarget={setTarget} />
+      )}
       <WorkList
         key={w.workQueryKey.join(":")}
         today={today}
+        target={target}
         edits={edits}
         setEdits={setEdits}
         editError={editError}
@@ -143,13 +165,15 @@ function WorkLoadPanel({
 }
 function WorkList({
   today,
+  target,
   edits,
   setEdits,
   editError,
-}: { today: boolean } & DraftProps) {
+}: { today: boolean; target: SprintTarget } & DraftProps) {
   const w = useWorkspace(),
     client = useQueryClient();
   const [search, setSearch] = useState("");
+  const [hourCategory, setHourCategory] = useState<HourCategory>("auto");
   const [exporting, setExporting] = useState(false);
   const [statuses, setStatuses] = useState(["all"]);
   const [destinations, setDestinations] = useState(["current"]);
@@ -352,7 +376,7 @@ function WorkList({
           identity,
       })),
   ];
-  const matches = (i: WorkItem) =>
+  const matchesFilters = (i: WorkItem) =>
     (selectedUsers.includes("all") ||
       selectedUsers.some((user) => owns(i, user, owner))) &&
     (statuses.includes("all") || statuses.includes(i.state)) &&
@@ -364,38 +388,18 @@ function WorkList({
           iterations,
           configFor(i)?.backlogPath ?? w.meta!.backlogPath,
         ),
-      )) &&
-    (i.title.toLowerCase().includes(search.toLowerCase()) ||
-      String(i.id).includes(search));
+      ));
   const stories = shown.filter(
       (i) => i.isStory ?? i.type === w.meta!.storyType,
     ),
     tasks = shown.filter((i) => i.isTask ?? i.type === w.meta!.taskType);
-  const groups = [
-    ...stories
-      .map((story) => ({
-        story,
-        tasks: tasks.filter(
-          (t) =>
-            t.parentId === story.id &&
-            matches(t) &&
-            (!today || plan.includes(t.id)),
-        ),
-      }))
-      .filter((g) =>
-        today
-          ? g.tasks.some(matches)
-          : matches(g.story) || g.tasks.some(matches),
-      ),
-    ...tasks
-      .filter(
-        (t) =>
-          !stories.some((s) => s.id === t.parentId) &&
-          (!today || plan.includes(t.id)) &&
-          matches(t),
-      )
-      .map((t) => ({ story: undefined, tasks: [t] })),
-  ];
+  const groups = groupWorkItems({
+    stories,
+    tasks,
+    search,
+    matchesFilters,
+    plannedIds: today ? plan : undefined,
+  });
   const change = (item: WorkItem, values: Record<string, string | number>) => {
     setMessage("");
     setError("");
@@ -422,6 +426,48 @@ function WorkList({
   };
   const visibleTasks = groups.flatMap((g) => g.tasks);
   const visibleStories = groups.flatMap((g) => (g.story ? [g.story] : []));
+  const fillHours = () => {
+    setError("");
+    setMessage("");
+    try {
+      // Validate raw drafts too: effective() converts a cleared input to zero.
+      for (const task of visibleTasks)
+        patchValues(edits[task.id]?.values ?? {});
+      const supportedFields = (item: WorkItem) =>
+        configFor(item)?.taskFields ?? w.meta!.taskFields;
+      const result = fillSprintHours({
+        tasks: visibleTasks,
+        minimum: target.min,
+        category: hourCategory,
+        supportedFields,
+        backlogPath: (item) =>
+          configFor(item)?.backlogPath ?? w.meta!.backlogPath,
+      });
+      setEdits((previous) =>
+        result.changes.reduce(
+          (next, { item, values }) =>
+            stage(items, next, item.id, values, supportedFields(item)),
+          previous,
+        ),
+      );
+      setMessage(
+        [
+          `${result.changes.length} tasks staged. Save changes to apply.`,
+          ...result.summaries.map(
+            (summary) =>
+              `${summary.project ? `${summary.project} · ` : ""}${summary.iteration || "Backlog"}: ${
+                summary.reason ??
+                `Added ${summary.added}h across ${summary.changed} tasks`
+              }. Completed hours matched for ${summary.completionOnly} other estimated tasks. ${summary.unmatched} titles unmatched for added hours; ${summary.unsupported} tasks unsupported for added hours.`,
+          ),
+        ].join(" "),
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Could not fill sprint hours.",
+      );
+    }
+  };
   const downloadExcel = async () => {
     setExporting(true);
     setError("");
@@ -644,9 +690,9 @@ function WorkList({
       <Notice compact label="How task changes work">
         Closing one task stages the same closed state for all tasks under its
         story, including tasks assigned to other users. Changing a task status
-        sets Completed Work to its current estimate. Loading and estimate edits
-        do not change Completed Work. Hour bars include pending edits; Save
-        changes applies them to Azure.
+        sets Completed Work to its current estimate. Loading and manual estimate
+        edits do not change Completed Work. Hour bars include pending edits;
+        Save changes applies them to Azure.
       </Notice>
       {count > 0 && (
         <Notice compact label={`${count} unsaved work items`}>
@@ -726,6 +772,51 @@ function WorkList({
           }}
         />
       </div>
+      {!today && (
+        <section className="bulk-toolbar" aria-label="Fill sprint hours">
+          <strong>Sprint minimum: {target.min}h</strong>
+          <div
+            className="actions"
+            role="group"
+            aria-label="Hour allocation category"
+          >
+            {hourCategories.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={hourCategory === value}
+                className={hourCategory === value ? "primary" : ""}
+                disabled={busy}
+                onClick={() => setHourCategory(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={
+              busy ||
+              w.loading ||
+              query.isFetching ||
+              !!query.error ||
+              !query.isSuccess ||
+              !visibleTasks.length
+            }
+            onClick={fillHours}
+          >
+            Fill sprint minimum
+          </button>
+          <p className="muted">
+            Fill each filtered sprint to {target.min}h, including closed and
+            offscreen tasks. Auto uses implementation, then testing, then code
+            review per story. All filtered estimates count toward the total.
+            Added hours are shared equally. Completed Work matches every
+            estimated task, including tasks receiving no added hours. State and
+            Remaining Work stay unchanged. Save changes to apply.
+          </p>
+        </section>
+      )}
       {destinations.includes("current") &&
         !iterations.some((iteration) => isIterationCurrent(iteration)) && (
           <Notice>
@@ -918,13 +1009,13 @@ function WorkList({
                     </span>
                     <div className="story-title-row">
                       <label className="story-selection">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select story: ${group.story.title}`}
-                        checked={selected.includes(group.story.id)}
-                        disabled={busy}
-                        onChange={() => toggle(group.story!.id)}
-                      />
+                        <input
+                          type="checkbox"
+                          aria-label={`Select story: ${group.story.title}`}
+                          checked={selected.includes(group.story.id)}
+                          disabled={busy}
+                          onChange={() => toggle(group.story!.id)}
+                        />
                         <h2>{group.story.title}</h2>
                       </label>
                       <button
@@ -1067,7 +1158,7 @@ function ItemRow({
       type="number"
       min="0"
       max="10000"
-      step="0.1"
+      step="0.01"
       aria-label={`${item.title} ${name} hours`}
       disabled={
         busy ||
@@ -1189,10 +1280,17 @@ function TitleDialog({
       >
         <div className="dialog-heading">
           <div>
-            <p className="eyebrow">{item.type} #{item.id}</p>
+            <p className="eyebrow">
+              {item.type} #{item.id}
+            </p>
             <h2 id="edit-title-heading">Edit title</h2>
           </div>
-          <button className="icon" type="button" aria-label="Close title editor" onClick={onClose}>
+          <button
+            className="icon"
+            type="button"
+            aria-label="Close title editor"
+            onClick={onClose}
+          >
             <X size={18} />
           </button>
         </div>
@@ -1213,7 +1311,9 @@ function TitleDialog({
             />
           </label>
           <div className="dialog-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
             <button className="primary" type="submit" disabled={!trimmed}>
               Save title
             </button>

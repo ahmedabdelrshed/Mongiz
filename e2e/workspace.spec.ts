@@ -106,6 +106,7 @@ async function azureFixture(
   withHours = false,
   taskCount = 1,
   taskState = "Closed",
+  taskTitle = (id: number) => `Item ${id}`,
 ) {
   let nextCreatedId = 3000;
   const token = "OrgProjectsTestPAT123",
@@ -254,7 +255,7 @@ async function azureFixture(
           id,
           rev: 1,
           fields: {
-            "System.Title": `Item ${id}`,
+            "System.Title": type === "Task" ? taskTitle(id) : `Item ${id}`,
             "System.WorkItemType": type,
             "System.TeamProject": project,
             "System.State": type === "Task" ? taskState : "New",
@@ -321,6 +322,8 @@ async function azureFixture(
         route.request().method() === "PATCH"
       ) {
         const id = Number(path.split("/").pop());
+        const isTask = id === 11 || id === 21 || (id >= 1000 && id < 1000 + taskCount);
+        const project = id === 20 || id === 21 ? "Platform" : "OMS";
         const changes = Object.fromEntries(
           body
             .filter((p: any) => p.op === "add")
@@ -330,13 +333,13 @@ async function azureFixture(
           id,
           rev: 2,
           fields: {
-            "System.Title": `Item ${id}`,
+            "System.Title": isTask ? taskTitle(id) : `Item ${id}`,
             "System.WorkItemType":
-              id === 10 ? "User Story" : "Product Backlog Item",
-            "System.TeamProject": id === 10 ? "OMS" : "Platform",
-            "System.State": "New",
+              isTask ? "Task" : id === 10 ? "User Story" : "Product Backlog Item",
+            "System.TeamProject": project,
+            "System.State": isTask ? taskState : "New",
             "System.AssignedTo": "ahmed@example.com",
-            "System.IterationPath": id === 10 ? "OMS" : "Platform",
+            "System.IterationPath": withHours ? `${project}\\Sprint 1` : project,
             ...changes,
           },
         };
@@ -660,6 +663,93 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
       (c) => !c.body.some((p: any) => /System.Tags|RemainingWork/.test(p.path)),
     ),
   ).toBe(true);
+});
+
+test("My Work search resets a scrolled list and fills every filtered task including offscreen rows", async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
+  const { calls } = await azureFixture(page, true, 80, "Closed", (id) => `Implement frontend ${id}`);
+  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toBeVisible();
+  const list = page.getByRole("list", { name: "Stories and tasks" });
+  await expect.poll(async () => {
+    await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    return page.getByLabel("Implement frontend 1079 estimate hours").isVisible();
+  }).toBe(true);
+  const search = page.getByLabel("Search work");
+  await search.fill(" #1079 ");
+  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Item 10", exact: true })).toBeVisible();
+  await search.fill("");
+  await search.pressSequentially("  ITEM 10  ");
+  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toBeVisible();
+  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toHaveCount(0);
+  await page.getByLabel("Sprint target maximum").fill("400");
+  await page.getByLabel("Sprint target minimum").fill("300");
+  await page.getByLabel("Calculation user").selectOption("omar@example.com");
+  await page.getByRole("button", { name: "Fill sprint minimum" }).click();
+  await expect(page.getByText(/80 tasks staged/)).toBeVisible();
+  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toHaveValue("3.75");
+  await expect(page.getByLabel("Implement frontend 1000 completed hours")).toHaveValue("3.75");
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  const draft = await page.evaluate(() => JSON.parse(localStorage.getItem("taskflow:v1:ahmed@example.com:company:all-projects:work-edits")!));
+  expect(Object.keys(draft)).toHaveLength(80);
+  expect(draft[1079].values).toEqual({
+    "Microsoft.VSTS.Scheduling.OriginalEstimate": 3.75,
+    "Microsoft.VSTS.Scheduling.CompletedWork": 3.75,
+  });
+  await expect.poll(async () => {
+    await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    return page.getByLabel("Implement frontend 1079 completed hours").isVisible();
+  }).toBe(true);
+  await expect(page.getByLabel("Implement frontend 1079 completed hours")).toHaveValue("3.75");
+  await page.getByRole("button", { name: "Discard changes" }).click();
+  await search.fill(" #1079 ");
+  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toHaveValue("3");
+  await expect(page.getByLabel("Implement frontend 1079 completed hours")).toHaveValue("2");
+  await page.screenshot({ path: testInfo.outputPath("my-work-fill-desktop.png"), fullPage: true });
+});
+
+test("My Work category actions fit mobile and save only the searched task's hours", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
+  const { calls } = await azureFixture(page, true, 3, "Active", (id) =>
+    id === 1000 ? "Unit testing" : "Frontend code review",
+  );
+  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(page.getByLabel("Unit testing estimate hours")).toBeVisible();
+  await page.getByLabel("Search work").fill(" #1000 ");
+  const actions = page.getByRole("region", { name: "Fill sprint hours" });
+  await actions.getByRole("button", { name: "Testing", exact: true }).click();
+  await expect(actions.getByRole("button", { name: "Testing", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await actions.getByRole("button", { name: "Fill sprint minimum" }).click();
+  await expect(page.getByLabel("Unit testing estimate hours")).toHaveValue("30");
+  await expect(page.getByLabel("Unit testing completed hours")).toHaveValue("30");
+  await expect(page.getByLabel("Unit testing state")).toHaveValue("Active");
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  for (const button of await actions.getByRole("button").all()) {
+    const bounds = (await button.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: testInfo.outputPath("my-work-fill-mobile.png"), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole("status", { name: "How task changes work" }).focus();
+  await expect(page.locator(".notice-tooltip").first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole("button", { name: /Save changes/ }).click();
+  await expect(page.getByText("Saved changes to 1 work items.")).toBeVisible();
+  const patches = calls.filter((call) => Array.isArray(call.body));
+  expect(patches).toHaveLength(1);
+  expect(patches[0].url).toMatch(/workitems\/1000\?/i);
+  expect(patches[0].body).toEqual([
+    { op: "test", path: "/rev", value: 1 },
+    { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: 30 },
+    { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: 30 },
+  ]);
 });
 
 test("completed work changes only with status and all-project hour bars preview closures before Save", async ({

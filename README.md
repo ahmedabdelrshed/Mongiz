@@ -184,6 +184,12 @@ There is no separate manual Add Story flow. Select a destination project, enter 
 
 ## My Work project tabs and bulk editing
 
+My Work search trims whitespace and matches titles without case sensitivity. Search an ID with or without `#`. A matching story shows its tasks that satisfy the user, sprint, and status filters; matching tasks keep their parent story for context. Today's plan still shows only planned tasks.
+
+**Fill sprint minimum** uses all tasks matching the list filters and search, including closed and offscreen tasks. It fills each project/sprint separately to the saved minimum target (30h by default), independently of hour-calculation filters and checkbox selection. **Auto** chooses implementation tasks per story, falling back to testing and then code review when needed. Choose **Implementation**, **Testing**, or **Code review** to restrict the category. Classification uses task titles; custom titles without those words are reported as unmatched.
+
+All filtered estimates count toward the sprint total. The missing hours are added to eligible tasks in equal shares, rounded to 0.01h with remainders assigned by task ID. Completed Work is matched to every filtered task's Original Estimate, including tasks receiving no added hours and sprints already at target. State and Remaining Work are preserved. Missing estimates count as zero for allocation; tasks that still have no estimate retain their Completed Work. Tasks at 0.1h are eligible for this action. Adding hours requires support for both hour fields; matching existing estimates only requires Completed Work support. Backlog items are skipped. Sprints without eligible categories retain their estimates while supported completed hours are matched. Invalid hour drafts must be corrected first. The action stages drafts only: **Save changes** writes to Azure, and **Discard changes** restores saved hours.
+
 My Work starts on **All**, followed by a tab for each accessible project. Switching tabs filters the displayed groups and clears selection; staged edits remain until Save or Discard. Search/status/iteration changes also clear selection.
 
 Above the list, **Select all tasks** and **Select all user stories** select items displayed in the current view. You can uncheck individual rows afterward; the top checkbox shows partial selection. Task and story selections are independent and can coexist.

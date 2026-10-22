@@ -685,6 +685,7 @@ a {
   margin: 0;
 }
 .notice-tooltip {
+  display: none;
   position: absolute;
   z-index: 40;
   top: calc(100% + 8px);
@@ -708,7 +709,8 @@ a {
     visibility 150ms ease;
 }
 .notice.compact:hover .notice-tooltip,
-.notice.compact:focus-visible .notice-tooltip {
+.notice.compact:focus .notice-tooltip {
+  display: block;
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
@@ -1641,6 +1643,13 @@ a {
     width: 100%;
     max-width: none;
     flex-basis: 100%;
+  }
+  .notice-tooltip {
+    position: fixed;
+    top: auto;
+    bottom: 16px;
+    left: 16px;
+    width: calc(100vw - 32px);
   }
   .project-tabs {
     flex-wrap: nowrap;

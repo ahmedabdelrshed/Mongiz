@@ -10,7 +10,8 @@ it("uses one capacity target when current-sprint work spans projects", async () 
   vi.setSystemTime(new Date("2026-10-09T12:00:00Z"));
   render(
     <HoursSummary
-      scope="hours-summary-multiple-projects"
+      target={{ min: 30, max: 40 }}
+      setTarget={vi.fn()}
       owner="ahmed@example.com"
       people={[]}
       iterations={[

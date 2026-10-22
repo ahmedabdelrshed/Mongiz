@@ -1,5 +1,21 @@
-import { isIterationCurrent, type Iteration, type WorkItem } from "../../shared/api/types";
+import {
+  isIterationCurrent,
+  type Iteration,
+  type WorkItem,
+} from "../../shared/api/types";
 export const DEFAULT_SPRINT_TARGET = { min: 30, max: 40 };
+export type SprintTarget = typeof DEFAULT_SPRINT_TARGET;
+export function isSprintTarget(value: unknown): value is SprintTarget {
+  const target = value as SprintTarget | null;
+  return (
+    !!target &&
+    Number.isFinite(target.min) &&
+    Number.isFinite(target.max) &&
+    target.min >= 0 &&
+    target.max >= target.min &&
+    target.max <= 10000
+  );
+}
 export function owns(item: WorkItem, user: string, owner: string) {
   return (
     user === "all" ||

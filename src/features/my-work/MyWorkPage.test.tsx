@@ -7,12 +7,16 @@ import { WorkspaceProvider } from "../../app/Workspace";
 import { demoRepository } from "../../shared/api/demo";
 import { MyWorkPage } from "./MyWorkPage";
 import * as excelExport from "./exportWorkItems";
+import { fields } from "../../shared/api/types";
 // The work fixtures belong to Sprint 12, rather than whichever sprint is current when tests run.
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
 });
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 it("exports the filtered view with parent stories and unsaved values without saving", async () => {
   const download = vi.spyOn(excelExport, "exportWorkItems").mockResolvedValue();
@@ -32,8 +36,12 @@ it("exports the filtered view with parent stories and unsaved values without sav
   expect(exported.stories.map((item) => item.id)).toEqual([2481]);
   expect(exported.tasks.map((item) => item.id)).toEqual([2483]);
   expect(exported.tasks[0]).toMatchObject({ estimate: 5, project: "OMS" });
-  expect(exported.tasks[0].url).toBe("https://dev.azure.com/demo/OMS/_workitems/edit/2483");
-  expect(exported.stories[0].url).toBe("https://dev.azure.com/demo/OMS/_workitems/edit/2481");
+  expect(exported.tasks[0].url).toBe(
+    "https://dev.azure.com/demo/OMS/_workitems/edit/2483",
+  );
+  expect(exported.stories[0].url).toBe(
+    "https://dev.azure.com/demo/OMS/_workitems/edit/2481",
+  );
   expect(update).not.toHaveBeenCalled();
   await screen.findByText(/Exported 1 user stories and 1 tasks to Excel/);
   await user.clear(screen.getByLabelText("Search work"));
@@ -77,6 +85,198 @@ function setup() {
     </MemoryRouter>,
   );
 }
+async function hourTaskFixture() {
+  const existing = await demoRepository.listMine();
+  const titles: Record<number, string> = {
+    2482: "Implement frontend requirements",
+    2483: "Unit testing",
+    2484: "Backend code review",
+  };
+  const tasks = existing.map((item) => ({
+    ...item,
+    title: titles[item.id] ?? item.title,
+  }));
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify([
+      ...tasks,
+      {
+        ...tasks[1],
+        id: 2490,
+        title: "Implement backend for Sara",
+        assignedTo: "sara@example.com",
+        estimate: 5,
+      },
+    ]),
+  );
+  return tasks;
+}
+
+it("searches story titles and prefixed IDs with filtered children and retains task parent context", async () => {
+  const user = userEvent.setup();
+  setup();
+  const search = await screen.findByLabelText("Search work");
+  await user.type(search, "  DEVICE HISTORY  ");
+  expect(screen.getByLabelText("Build search form state")).toBeInTheDocument();
+  expect(
+    screen.getByLabelText("Analyze requirements state"),
+  ).toBeInTheDocument();
+  await chooseFilter(user, "Filter status", "Closed");
+  expect(
+    screen.queryByLabelText("Build search form state"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByLabelText("Analyze requirements state"),
+  ).toBeInTheDocument();
+  await chooseFilter(user, "Filter status", "All statuses");
+  await user.clear(search);
+  await user.type(search, " #2483 ");
+  expect(
+    screen.getByRole("heading", {
+      name: "Search device history by serial number",
+    }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Build search form state")).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Analyze requirements state"),
+  ).not.toBeInTheDocument();
+  await user.clear(search);
+  await user.type(search, " #2481 ");
+  expect(
+    screen.getByLabelText("Integrate traceability API state"),
+  ).toBeInTheDocument();
+  await user.clear(search);
+  expect(
+    screen.getByLabelText("Analyze requirements state"),
+  ).toBeInTheDocument();
+});
+
+it("fills filtered sprint hours independently of hour controls and selection, with Save and Discard", async () => {
+  await hourTaskFixture();
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  setup();
+  await screen.findByLabelText(
+    "Implement frontend requirements estimate hours",
+  );
+  const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
+  expect(screen.getByText("Sprint minimum: 30h")).toBeInTheDocument();
+  const target = screen.getByLabelText("Sprint target minimum");
+  await user.clear(target);
+  await user.type(target, "12");
+  expect(screen.getByText("Sprint minimum: 12h")).toBeInTheDocument();
+  await user.selectOptions(
+    screen.getByLabelText("Calculation user"),
+    "sara@example.com",
+  );
+  await chooseFilter(user, "Calculation sprints", "Current sprints");
+  await chooseFilter(user, "Calculation sprints", "OMS · Sprint 13");
+  await user.type(screen.getByLabelText("Search work"), " #2481 ");
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select task: Unit testing" }),
+  );
+  await user.click(fill);
+  expect(
+    screen.getByLabelText("Implement frontend requirements estimate hours"),
+  ).toHaveValue(7);
+  expect(
+    screen.getByLabelText("Implement frontend requirements completed hours"),
+  ).toHaveValue(7);
+  expect(
+    screen.getByLabelText("Implement frontend requirements state"),
+  ).toHaveValue("Closed");
+  expect(
+    screen.getByLabelText("Implement frontend requirements remaining hours"),
+  ).toHaveValue(0);
+  expect(screen.getByLabelText("Unit testing estimate hours")).toHaveValue(3);
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(3);
+  expect(
+    screen.getByLabelText("Backend code review estimate hours"),
+  ).toHaveValue(2);
+  expect(
+    screen.getByLabelText("Backend code review completed hours"),
+  ).toHaveValue(2);
+  expect(update).not.toHaveBeenCalled();
+  const draft = JSON.parse(
+    localStorage.getItem("taskflow:v1:demo:work-edits")!,
+  );
+  expect(draft).toEqual({
+    "2482": { rev: 1, values: { [fields.estimate]: 7, [fields.completed]: 7 } },
+    "2483": { rev: 1, values: { [fields.completed]: 3 } },
+    "2484": { rev: 1, values: { [fields.completed]: 2 } },
+  });
+  await user.click(fill);
+  expect(
+    screen.getByText(/Already at or above the minimum/),
+  ).toBeInTheDocument();
+  expect(
+    JSON.parse(localStorage.getItem("taskflow:v1:demo:work-edits")!),
+  ).toEqual(draft);
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
+  expect(
+    screen.getByLabelText("Implement frontend requirements estimate hours"),
+  ).toHaveValue(2);
+  expect(
+    screen.getByLabelText("Implement frontend requirements completed hours"),
+  ).toHaveValue(2);
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(
+    null,
+  );
+  expect(
+    screen.getByLabelText("Backend code review completed hours"),
+  ).toHaveValue(null);
+  await user.click(fill);
+  await user.click(screen.getByRole("button", { name: /Save changes/ }));
+  await screen.findByText("Saved changes to 3 work items.");
+  expect(update).toHaveBeenCalledTimes(3);
+  expect(update.mock.calls[0][1]).toEqual({
+    [fields.estimate]: 7,
+    [fields.completed]: 7,
+  });
+  expect(update.mock.calls[1][1]).toEqual({ [fields.completed]: 3 });
+  expect(update.mock.calls[2][1]).toEqual({ [fields.completed]: 2 });
+  expect(
+    (await demoRepository.listMine()).find((item) => item.id === 2490)
+      ?.estimate,
+  ).toBe(5);
+});
+
+it("fills a searched testing task alone and rejects cleared hour drafts before staging more changes", async () => {
+  await hourTaskFixture();
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  setup();
+  const search = await screen.findByLabelText("Search work");
+  await user.type(search, "unit testing");
+  const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
+  await user.click(screen.getByRole("button", { name: "Testing" }));
+  expect(screen.getByRole("button", { name: "Testing" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await user.clear(screen.getByLabelText("Unit testing estimate hours"));
+  await user.click(fill);
+  expect(
+    screen.getByText(/Hours \/ story points must be a number/),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(
+    null,
+  );
+  await user.type(screen.getByLabelText("Unit testing estimate hours"), "6");
+  await user.click(fill);
+  expect(screen.getByLabelText("Unit testing estimate hours")).toHaveValue(30);
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(30);
+  expect(screen.getByLabelText("Unit testing remaining hours")).toHaveValue(2);
+  expect(screen.getByLabelText("Unit testing state")).toHaveValue("Active");
+  await user.clear(search);
+  expect(
+    screen.getByLabelText("Implement frontend requirements estimate hours"),
+  ).toHaveValue(2);
+  expect(
+    screen.getByLabelText("Backend code review estimate hours"),
+  ).toHaveValue(2);
+  expect(update).not.toHaveBeenCalled();
+});
 async function chooseFilter(
   user: ReturnType<typeof userEvent.setup>,
   label: string,
@@ -346,6 +546,9 @@ it("shows incremental progress and keeps loaded work editable", async () => {
   expect(screen.getByLabelText("Current project items progress")).toHaveValue(
     2,
   );
+  expect(
+    screen.getByRole("button", { name: "Fill sprint minimum" }),
+  ).toBeDisabled();
   await user.clear(estimate);
   await user.type(estimate, "4");
   expect(estimate).toHaveValue(4);
@@ -405,6 +608,9 @@ it("keeps partial rows visible when a work load fails", async () => {
   reject(new Error("Platform: work-item loading failed."));
   await screen.findByText("Platform: work-item loading failed.");
   expect(screen.getByRole("button", { name: "Export Excel" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Fill sprint minimum" }),
+  ).toBeDisabled();
   expect(screen.getByLabelText(`${task.title} state`)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(load).toHaveBeenCalledTimes(2));

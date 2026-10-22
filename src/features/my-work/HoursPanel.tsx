@@ -3,8 +3,17 @@ import { useWorkspace } from "../../app/Workspace";
 import { Loading, Notice } from "../../shared/ui/Common";
 import { effective, type Edits } from "./edits";
 import { HoursSummary } from "./HoursSummary";
+import type { SprintTarget } from "./filters";
 
-export function HoursPanel({ edits }: { edits: Edits }) {
+export function HoursPanel({
+  edits,
+  target,
+  setTarget,
+}: {
+  edits: Edits;
+  target: SprintTarget;
+  setTarget: (target: SprintTarget) => void;
+}) {
   const w = useWorkspace();
   // Request all-project hours once for this account/organization, independently
   // of the selected list projects and their query cache.
@@ -32,7 +41,8 @@ export function HoursPanel({ edits }: { edits: Edits }) {
           .filter((i) => i.isTask ?? i.type === w.hoursMeta!.taskType)
           .map((i) => effective(i, edits))}
         iterations={w.hoursMeta.iterations}
-        scope={w.scope}
+        target={target}
+        setTarget={setTarget}
         owner={w.settings.mode === "demo" ? "ahmed@example.com" : w.account}
         people={w.hoursMeta.people}
       />

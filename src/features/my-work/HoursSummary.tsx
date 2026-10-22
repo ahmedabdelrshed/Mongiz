@@ -1,28 +1,22 @@
 import { useState } from "react";
-import { isIterationCurrent, type Iteration, type WorkItem } from "../../shared/api/types";
 import {
-  DEFAULT_SPRINT_TARGET,
+  isIterationCurrent,
+  type Iteration,
+  type WorkItem,
+} from "../../shared/api/types";
+import {
   hourTotals,
   uniqueSprints,
   owns,
+  isSprintTarget,
+  type SprintTarget,
 } from "./filters";
-import { storageKey, useStored } from "../../shared/storage/storage";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
-function validTarget(value: unknown): value is { min: number; max: number } {
-  const v = value as { min: number; max: number };
-  return (
-    !!v &&
-    Number.isFinite(v.min) &&
-    Number.isFinite(v.max) &&
-    v.min >= 0 &&
-    v.max >= v.min &&
-    v.max <= 10000
-  );
-}
 export function HoursSummary({
   items,
   iterations,
-  scope,
+  target,
+  setTarget,
   owner,
   people,
 }: {
@@ -30,7 +24,8 @@ export function HoursSummary({
   iterations: Iteration[];
   owner: string;
   people: import("../../shared/api/types").Person[];
-  scope: string;
+  target: SprintTarget;
+  setTarget: (target: SprintTarget) => void;
 }) {
   const [selectedSprints, setSelectedSprints] = useState(["current"]);
   const [selectedMonths, setSelectedMonths] = useState(["current"]);
@@ -62,11 +57,6 @@ export function HoursSummary({
       ...items.map((i) => i.assignedTo).filter(Boolean),
     ]),
   ].sort();
-  const [target, setTarget] = useStored(
-    storageKey(scope, "sprint-target"),
-    DEFAULT_SPRINT_TARGET,
-    validTarget,
-  );
   const [minimum, setMinimum] = useState(String(target.min));
   const [maximum, setMaximum] = useState(String(target.max));
   const updateTarget = (side: "min" | "max", value: string) => {
@@ -75,12 +65,12 @@ export function HoursSummary({
     const min = side === "min" ? value : minimum;
     const max = side === "max" ? value : maximum;
     const next = { min: Number(min), max: Number(max) };
-    if (min !== "" && max !== "" && validTarget(next)) setTarget(next);
+    if (min !== "" && max !== "" && isSprintTarget(next)) setTarget(next);
   };
   const invalid =
     minimum === "" ||
     maximum === "" ||
-    !validTarget({ min: Number(minimum), max: Number(maximum) });
+    !isSprintTarget({ min: Number(minimum), max: Number(maximum) });
   const availableSprints = uniqueSprints(availableIterations);
   const selected = availableSprints.filter(
     (iteration) =>
@@ -125,7 +115,10 @@ export function HoursSummary({
     max: target.max * factor,
   });
   return (
-    <section className="hours-summary hours-summary-compact" aria-label="Sprint and month hours">
+    <section
+      className="hours-summary hours-summary-compact"
+      aria-label="Sprint and month hours"
+    >
       <h2>Hour calculations</h2>
       <div className="toolbar">
         <select
@@ -196,6 +189,7 @@ export function HoursSummary({
           <input
             aria-label="Sprint target minimum"
             type="number"
+            step="0.01"
             min="0"
             max={target.max}
             value={minimum}
@@ -207,6 +201,7 @@ export function HoursSummary({
           <input
             aria-label="Sprint target maximum"
             type="number"
+            step="0.01"
             min={target.min}
             max="10000"
             value={maximum}
