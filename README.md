@@ -44,6 +44,18 @@ The ZIP deliberately excludes node_modules, generated build output and credentia
 - My Work edit draft persistence, explicit export/import of creation batches, local task templates.
 - Responsive layouts and accessible labels for keyboard and screen-reader use.
 
+## Workspace appearance and navigation
+
+Choose **Light**, **Dark**, or **System** under **Settings → Appearance**. System is the default and follows your device appearance. The preference is remembered in this browser independently of your Azure connection.
+
+The desktop sidebar groups daily work and workspace tools. Below 1024px, use the menu button in the header to open navigation. Task fields remain inline on desktop; on smaller screens, **Edit** opens a labeled task panel. **Done** closes the panel and keeps staged edits; **Save changes** in the bottom bar writes them to Azure. Short work lists fit their contents while large lists remain virtualized.
+
+My Work shows compact sprint totals. Open **Hour settings and breakdowns** for calculation filters, capacity targets, project/month totals, and hour refresh. **Fill sprint minimum** opens the separate list allocation controls. Changing list projects or filters preserves the independent hour settings.
+
+Create Stories uses numbered sections and keeps batch totals and review actions visible. Adding requirements collapses the paste section; use **Add more requirements** to reopen it. The first story starts expanded. Other stories and task templates can be expanded as needed. Confirmation dialogs support keyboard navigation, and animations respect your device's reduced-motion preference.
+
+Current UI previews: [light desktop](docs/mongiz-light-preview.png), [dark desktop](docs/mongiz-dark-preview.png), and [dark mobile](docs/mongiz-mobile-dark-preview.png).
+
 ## Azure setup
 
 This release targets hosted Azure DevOps Services (`dev.azure.com`), not on-premises Azure DevOps Server.

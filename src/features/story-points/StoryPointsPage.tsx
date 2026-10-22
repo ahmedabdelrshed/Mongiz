@@ -28,7 +28,7 @@ function ProjectPage() {
         title="Story points"
         subtitle="Find unestimated stories and assign story points for any project."
       />
-      <section className="move-panel">
+      <section className="move-panel project-scope">
         <label>
           Project
           <select
@@ -288,7 +288,7 @@ function ProjectStories({
             </label>
           </fieldset>
           <section className="move-panel" aria-label="Unestimated stories">
-            <p className="muted">
+            <p className="muted" role="status">
               Showing {shown.length} of {unestimated.length} unestimated stories
             </p>
             {!shown.length && (

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { navigate, chooseWorkFilter, openHourSettings } from "./ui";
 
 async function fixture(page: Page) {
   const errors: string[] = [];
@@ -178,7 +179,7 @@ test("reviews exact stories/tasks and retries partial failures without repeating
   page,
 }, testInfo) => {
   const { patches, records, workQueries, errors } = await fixture(page);
-  await page.getByRole("link", { name: "Move stories", exact: true }).click();
+  await navigate(page, "Move stories");
   await page.getByLabel("Project to move stories").selectOption("p1");
   await expect(page.getByLabel("Select story #10: OMS story")).toBeVisible();
   expect(workQueries).toEqual(["/company/p1/_apis/wit/wiql"]);
@@ -233,7 +234,7 @@ test("supports mobile review and clears selections and task statuses when changi
 }, testInfo) => {
   const { patches, errors } = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("link", { name: "Move stories", exact: true }).click();
+  await navigate(page, "Move stories");
   await page.getByLabel("Project to move stories").selectOption("p1");
   await page.getByLabel("Select story #10: OMS story").check();
   await chooseTaskStatus(page, "Closed");

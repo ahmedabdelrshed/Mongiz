@@ -97,6 +97,12 @@ it("uses one capacity target when current-sprint work spans projects", async () 
   );
   vi.useRealTimers();
   const user = userEvent.setup();
+  expect(
+    screen.queryByRole("article", { name: "OMS" }),
+  ).not.toBeInTheDocument();
+  await user.click(
+    screen.getByRole("button", { name: "Hour settings and breakdowns" }),
+  );
 
   const combined = screen
     .getByRole("heading", { name: "Current sprint" })
@@ -251,6 +257,9 @@ it("combines only sprints containing 12 May across all projects, with inclusive 
     assignedTo: "sara@example.com",
   });
   render(summaryFixture([...iterations, iterations[0]], items));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hour settings and breakdowns" }),
+  );
   const current = screen
     .getByRole("heading", { name: "Current sprint" })
     .closest("article")!;
@@ -277,9 +286,10 @@ it("combines only sprints containing 12 May across all projects, with inclusive 
   expect(
     screen.getByText(/Sprints containing today \(12\/05\/2026\): 4/),
   ).toBeInTheDocument();
-  expect(
-    screen.getByText("Month totals").closest("details"),
-  ).not.toHaveAttribute("open");
+  expect(screen.getByRole("button", { name: "Month totals" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   act(() => {
     vi.setSystemTime(new Date(2026, 4, 13, 12));
     fireEvent(window, new Event("focus"));

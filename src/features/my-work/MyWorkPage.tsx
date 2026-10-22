@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Plus,
   RefreshCw,
   ExternalLink,
   Save,
   Pencil,
-  X,
   Download,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,6 +20,13 @@ import {
 } from "../../shared/api/types";
 import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
+import { Modal } from "../../shared/ui/Dialog";
+import {
+  AnimatedSection,
+  Disclosure,
+  fade,
+  useCompactLayout,
+} from "../../shared/ui/Motion";
 import { storageKey, useStored } from "../../shared/storage/storage";
 import { ProjectPicker } from "./ProjectPicker";
 import { VirtualWorkList } from "./VirtualWorkList";
@@ -59,6 +67,9 @@ export function MyWorkPage({ today = false }: { today?: boolean }) {
 }
 function WorkPage({ today }: { today: boolean }) {
   const w = useWorkspace();
+  const [actionsTarget, setActionsTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
   const [target, setTarget, targetError] = useStored(
     storageKey(w.scope, "sprint-target"),
     DEFAULT_SPRINT_TARGET,
@@ -71,11 +82,25 @@ function WorkPage({ today }: { today: boolean }) {
   );
   return (
     <>
+      <PageTitle
+        title={today ? "Today’s plan" : "My work"}
+        subtitle={
+          today
+            ? new Date().toLocaleDateString("en", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })
+            : "Your stories and tasks, with room to focus. Changes stay local until you save."
+        }
+        action={<div ref={setActionsTarget} />}
+      />
       {targetError && <Notice tone="error">{targetError}</Notice>}
       {!today && (
         <HoursPanel edits={edits} target={target} setTarget={setTarget} />
       )}
       <WorkList
+        actionsTarget={actionsTarget}
         key={w.workQueryKey.join(":")}
         today={today}
         target={target}
@@ -164,12 +189,17 @@ function WorkLoadPanel({
   );
 }
 function WorkList({
+  actionsTarget,
   today,
   target,
   edits,
   setEdits,
   editError,
-}: { today: boolean; target: SprintTarget } & DraftProps) {
+}: {
+  today: boolean;
+  target: SprintTarget;
+  actionsTarget: HTMLDivElement | null;
+} & DraftProps) {
   const w = useWorkspace(),
     client = useQueryClient();
   const [search, setSearch] = useState("");
@@ -192,6 +222,8 @@ function WorkList({
   const [bulkEstimate, setBulkEstimate] = useState("");
   const [bulkPoints, setBulkPoints] = useState("");
   const [titleEditor, setTitleEditor] = useState<WorkItem | null>(null);
+  const [taskEditorId, setTaskEditorId] = useState<number | null>(null);
+  const compact = useCompactLayout();
   const [plan, setPlan, planError] = useStored<number[]>(
     planKey(w.scope),
     [],
@@ -290,10 +322,6 @@ function WorkList({
   if (w.settings.mode === "azure" && w.account && !w.workProjects.length)
     return (
       <>
-        <PageTitle
-          title="My projects"
-          subtitle="Choose the projects Mongiz should load. No work items are requested until you choose."
-        />
         <ProjectPicker />
       </>
     );
@@ -578,10 +606,8 @@ function WorkList({
   ]);
   return (
     <>
-      <PageTitle
-        title={today ? "Today’s plan" : "My work"}
-        subtitle="Stories with tasks matching your user and sprint filters. Edits stay local until Save changes."
-        action={
+      {actionsTarget &&
+        createPortal(
           <div className="actions">
             <button
               disabled={
@@ -597,24 +623,14 @@ function WorkList({
               <Download size={15} />
               {exporting ? "Exporting…" : "Export Excel"}
             </button>
-            <button
-              className="primary"
-              disabled={busy || !count}
-              onClick={() => void save()}
-            >
-              <Save size={15} />
-              {busy ? "Saving…" : `Save changes${count ? ` (${count})` : ""}`}
-            </button>
-            {count > 0 && (
+            {count === 0 && (
               <button
-                disabled={busy}
-                onClick={() => {
-                  setEdits({});
-                  setError("");
-                  setMessage("Changes discarded.");
-                }}
+                className="primary"
+                disabled={busy || !count}
+                onClick={() => void save()}
               >
-                Discard changes
+                <Save size={15} />
+                {busy ? "Saving…" : `Save changes${count ? ` (${count})` : ""}`}
               </button>
             )}
             <button
@@ -631,9 +647,9 @@ function WorkList({
               <Plus size={16} />
               Create stories
             </Link>
-          </div>
-        }
-      />
+          </div>,
+          actionsTarget,
+        )}
       {w.settings.mode === "azure" && <ProjectPicker disabled={busy} />}
       {(query.isFetching || (query.error && !!w.workProgress)) && (
         <WorkLoadPanel
@@ -669,45 +685,52 @@ function WorkList({
             <button onClick={w.refresh}>Reload projects and work items</button>
           </Notice>
         )}
-      <p className="muted">
-        Loaded{" "}
-        {items.filter((i) => i.isTask ?? i.type === w.meta!.taskType).length}{" "}
-        tasks and{" "}
-        {items.filter((i) => i.isStory ?? i.type === w.meta!.storyType).length}{" "}
-        stories. List filters apply locally.
-      </p>
-      <button
-        disabled={busy}
-        onClick={() => {
-          setSearch("");
-          setStatuses(["all"]);
-          setSelectedUsers(["all"]);
-          setDestinations(["all"]);
-          setProject("");
-          setSelected([]);
-        }}
-      >
-        Show all loaded items
-      </button>
-      <Notice compact label="How task changes work">
-        Closing one task stages the same closed state for all tasks under its
-        story, including tasks assigned to other users. Changing a task status
-        sets Completed Work to its current estimate. Loading and manual estimate
-        edits do not change Completed Work. Hour bars include pending edits;
-        Save changes applies them to Azure.
-      </Notice>
-      {count > 0 && (
-        <Notice compact label={`${count} unsaved work items`}>
-          {count} work items have unsaved changes. They are kept in this browser
-          if you navigate away. Refresh preserves these edits; Save checks Azure
-          revisions.
+      <div className="loaded-summary">
+        <p className="muted">
+          Loaded{" "}
+          {items.filter((i) => i.isTask ?? i.type === w.meta!.taskType).length}{" "}
+          tasks and{" "}
+          {
+            items.filter((i) => i.isStory ?? i.type === w.meta!.storyType)
+              .length
+          }{" "}
+          stories. List filters apply locally.
+        </p>
+        <button
+          disabled={busy}
+          onClick={() => {
+            setSearch("");
+            setStatuses(["all"]);
+            setSelectedUsers(["all"]);
+            setDestinations(["all"]);
+            setProject("");
+            setSelected([]);
+          }}
+        >
+          Show all loaded items
+        </button>
+        <Notice compact label="How task changes work">
+          Closing one task stages the same closed state for all tasks under its
+          story, including tasks assigned to other users. Changing a task status
+          sets Completed Work to its current estimate. Loading and manual
+          estimate edits do not change Completed Work. Hour bars include pending
+          edits; Save changes applies them to Azure.
         </Notice>
-      )}
+        {count > 0 && (
+          <Notice compact label={`${count} unsaved work items`}>
+            {count} work items have unsaved changes. They are kept in this
+            browser if you navigate away. Refresh preserves these edits; Save
+            checks Azure revisions.
+          </Notice>
+        )}
+      </div>
       {today && (
         <div className="plan-summary">
           <strong>
-            {groups.reduce((n, g) => n + g.tasks.length, 0)} planned items
+            {visibleTasks.length} planned{" "}
+            {visibleTasks.length === 1 ? "item" : "items"}
           </strong>
+          <span>Selected for today</span>
         </div>
       )}
       <div role="tablist" aria-label="Project filters" className="project-tabs">
@@ -775,63 +798,70 @@ function WorkList({
         />
       </div>
       {!today && (
-        <section className="bulk-toolbar" aria-label="Fill sprint hours">
-          <strong>Sprint minimum: {target.min}h</strong>
-          <div
-            className="actions"
-            role="group"
-            aria-label="Hour allocation categories"
-          >
-            {hourCategories.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={selectedHourCategories.includes(value)}
-                className={
-                  selectedHourCategories.includes(value) ? "primary" : ""
-                }
-                disabled={busy}
-                onClick={() =>
-                  setSelectedHourCategories((previous) => {
-                    if (value === "auto") return ["auto"];
-                    const manual = previous.filter(
-                      (category) => category !== "auto",
-                    );
-                    const next = manual.includes(value)
-                      ? manual.filter((category) => category !== value)
-                      : [...manual, value];
-                    return next.length ? next : ["auto"];
-                  })
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={
-              busy ||
-              w.loading ||
-              query.isFetching ||
-              !!query.error ||
-              !query.isSuccess ||
-              !visibleTasks.length
-            }
-            onClick={fillHours}
-          >
-            Fill sprint minimum
-          </button>
-          <p className="muted">
-            Fill each filtered sprint to {target.min}h, including closed and
-            offscreen tasks. Choose multiple categories to share added hours
-            across their tasks. Auto uses implementation, then testing, then
-            code review per story. All filtered estimates count toward the
-            total. Added hours are shared equally. Completed Work matches every
-            estimated task, including tasks receiving no added hours. State and
-            Remaining Work stay unchanged. Save changes to apply.
-          </p>
-        </section>
+        <Disclosure
+          title="Fill sprint minimum"
+          label="Configure sprint minimum"
+          className="sprint-tools"
+          summary={`${target.min}h target`}
+        >
+          <section className="bulk-toolbar" aria-label="Fill sprint hours">
+            <strong>Sprint minimum: {target.min}h</strong>
+            <div
+              className="actions"
+              role="group"
+              aria-label="Hour allocation categories"
+            >
+              {hourCategories.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={selectedHourCategories.includes(value)}
+                  className={
+                    selectedHourCategories.includes(value) ? "primary" : ""
+                  }
+                  disabled={busy}
+                  onClick={() =>
+                    setSelectedHourCategories((previous) => {
+                      if (value === "auto") return ["auto"];
+                      const manual = previous.filter(
+                        (category) => category !== "auto",
+                      );
+                      const next = manual.includes(value)
+                        ? manual.filter((category) => category !== value)
+                        : [...manual, value];
+                      return next.length ? next : ["auto"];
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={
+                busy ||
+                w.loading ||
+                query.isFetching ||
+                !!query.error ||
+                !query.isSuccess ||
+                !visibleTasks.length
+              }
+              onClick={fillHours}
+            >
+              Fill sprint minimum
+            </button>
+            <p className="muted">
+              Fill each filtered sprint to {target.min}h, including closed and
+              offscreen tasks. Choose multiple categories to share added hours
+              across their tasks. Auto uses implementation, then testing, then
+              code review per story. All filtered estimates count toward the
+              total. Added hours are shared equally. Completed Work matches
+              every estimated task, including tasks receiving no added hours.
+              State and Remaining Work stay unchanged. Save changes to apply.
+            </p>
+          </section>
+        </Disclosure>
       )}
       {destinations.includes("current") &&
         !iterations.some((iteration) => isIterationCurrent(iteration)) && (
@@ -871,107 +901,125 @@ function WorkList({
           </button>
         )}
       </div>
-      {pickedTasks.length > 0 && (
-        <section className="bulk-toolbar" aria-label="Selected task actions">
-          <strong>{pickedTasks.length} tasks selected</strong>
-          <label>
-            Assignee
-            <select
-              aria-label="Bulk assignee"
-              value={bulkAssignee}
-              onChange={(e) => setBulkAssignee(e.target.value)}
-            >
-              <option value="__keep">Keep current assignee</option>
-              <option value="">Unassigned</option>
-              {w.meta.people.map((p) => (
-                <option key={p.id} value={p.identity}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            State
-            <select
-              aria-label="Bulk task state"
-              value={taskState}
-              onChange={(e) => setTaskState(e.target.value)}
-            >
-              <option value="">Keep current state</option>
-              {commonStates(pickedTasks, false).map((state) => (
-                <option key={state}>{state}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Estimate hours
-            <input
-              type="number"
-              min="0"
-              max="10000"
-              step="0.1"
-              aria-label="Bulk task estimate"
-              value={bulkEstimate}
-              onChange={(e) => setBulkEstimate(e.target.value)}
-            />
-          </label>
-          <button
-            disabled={
-              busy ||
-              (bulkAssignee === "__keep" && !taskState && bulkEstimate === "")
-            }
-            onClick={() => applyBulk(false)}
+      <AnimatePresence initial={false}>
+        {pickedTasks.length > 0 && (
+          <AnimatedSection
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fade}
+            key="task-actions"
+            className="bulk-toolbar"
+            aria-label="Selected task actions"
           >
-            Apply to selected tasks
-          </button>
-          <p className="muted">
-            Shared estimates preserve tasks currently at{" "}
-            {BULK_ESTIMATE_EXCLUDED_HOURS}h and tasks without an estimate.
-            Closing a task also closes all its siblings.
-          </p>
-        </section>
-      )}
-      {pickedStories.length > 0 && (
-        <section className="bulk-toolbar" aria-label="Selected story actions">
-          <strong>{pickedStories.length} user stories selected</strong>
-          <label>
-            State
-            <select
-              aria-label="Bulk story state"
-              value={storyState}
-              onChange={(e) => setStoryState(e.target.value)}
+            <strong>{pickedTasks.length} tasks selected</strong>
+            <label>
+              Assignee
+              <select
+                aria-label="Bulk assignee"
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+              >
+                <option value="__keep">Keep current assignee</option>
+                <option value="">Unassigned</option>
+                {w.meta.people.map((p) => (
+                  <option key={p.id} value={p.identity}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              State
+              <select
+                aria-label="Bulk task state"
+                value={taskState}
+                onChange={(e) => setTaskState(e.target.value)}
+              >
+                <option value="">Keep current state</option>
+                {commonStates(pickedTasks, false).map((state) => (
+                  <option key={state}>{state}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Estimate hours
+              <input
+                type="number"
+                min="0"
+                max="10000"
+                step="0.1"
+                aria-label="Bulk task estimate"
+                value={bulkEstimate}
+                onChange={(e) => setBulkEstimate(e.target.value)}
+              />
+            </label>
+            <button
+              disabled={
+                busy ||
+                (bulkAssignee === "__keep" && !taskState && bulkEstimate === "")
+              }
+              onClick={() => applyBulk(false)}
             >
-              <option value="">Keep current state</option>
-              {commonStates(pickedStories, true).map((state) => (
-                <option key={state}>{state}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Story points
-            <input
-              type="number"
-              min="0"
-              max="10000"
-              step="0.5"
-              aria-label="Bulk story points"
-              value={bulkPoints}
-              onChange={(e) => setBulkPoints(e.target.value)}
-            />
-          </label>
-          <button
-            disabled={busy || (!storyState && bulkPoints === "")}
-            onClick={() => applyBulk(true)}
+              Apply to selected tasks
+            </button>
+            <p className="muted">
+              Shared estimates preserve tasks currently at{" "}
+              {BULK_ESTIMATE_EXCLUDED_HOURS}h and tasks without an estimate.
+              Closing a task also closes all its siblings.
+            </p>
+          </AnimatedSection>
+        )}
+        {pickedStories.length > 0 && (
+          <AnimatedSection
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fade}
+            key="story-actions"
+            className="bulk-toolbar"
+            aria-label="Selected story actions"
           >
-            Apply to selected stories
-          </button>
-          <p className="muted">
-            The same points value applies to each selected story with a
-            supported points field. Story state changes leave child tasks
-            unchanged.
-          </p>
-        </section>
-      )}
+            <strong>{pickedStories.length} user stories selected</strong>
+            <label>
+              State
+              <select
+                aria-label="Bulk story state"
+                value={storyState}
+                onChange={(e) => setStoryState(e.target.value)}
+              >
+                <option value="">Keep current state</option>
+                {commonStates(pickedStories, true).map((state) => (
+                  <option key={state}>{state}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Story points
+              <input
+                type="number"
+                min="0"
+                max="10000"
+                step="0.5"
+                aria-label="Bulk story points"
+                value={bulkPoints}
+                onChange={(e) => setBulkPoints(e.target.value)}
+              />
+            </label>
+            <button
+              disabled={busy || (!storyState && bulkPoints === "")}
+              onClick={() => applyBulk(true)}
+            >
+              Apply to selected stories
+            </button>
+            <p className="muted">
+              The same points value applies to each selected story with a
+              supported points field. Story state changes leave child tasks
+              unchanged.
+            </p>
+          </AnimatedSection>
+        )}
+      </AnimatePresence>
       {groups.length ? (
         <VirtualWorkList
           key={[
@@ -990,6 +1038,8 @@ function WorkList({
               return (
                 <div className="virtual-task" data-story-id={group.story?.id}>
                   <ItemRow
+                    compact={compact}
+                    onEditTask={() => setTaskEditorId(item.id)}
                     key={item.id}
                     item={item}
                     edits={edits}
@@ -1130,22 +1180,240 @@ function WorkList({
         />
       ) : (
         <Empty title={today ? "Your plan is empty" : "No matching work items"}>
-          Try another filter or create a story.
+          {today ? (
+            <Link to="/work">Choose tasks from My work</Link>
+          ) : (
+            "Try another filter or create a story."
+          )}
         </Empty>
       )}
-      {titleEditor && (
-        <TitleDialog
-          item={titleEditor}
-          onClose={() => setTitleEditor(null)}
-          onSave={(title) => {
-            change(titleEditor, { "System.Title": title });
-            setTitleEditor(null);
-          }}
-        />
+      <AnimatePresence>
+        {taskEditorId !== null &&
+          (() => {
+            const savedItem = items.find((item) => item.id === taskEditorId);
+            if (!savedItem) return null;
+            const item = effective(savedItem, edits);
+            return (
+              <Modal
+                key={item.id}
+                open
+                onOpenChange={(open) => {
+                  if (!open) setTaskEditorId(null);
+                }}
+                title={`Edit task #${item.id}`}
+                kind="panel"
+                closeLabel="Close task editor"
+                description="Edits are staged locally. Use Save changes to update Azure."
+              >
+                <h3 className="task-detail-title">{item.title}</h3>
+                <p className="muted">
+                  {item.project} · {item.iteration}
+                </p>
+                <TaskTitleField
+                  item={item}
+                  disabled={busy}
+                  onChange={(title) => change(item, { "System.Title": title })}
+                />
+                <div className="task-detail-fields">
+                  <TaskFields
+                    item={item}
+                    edits={edits}
+                    busy={busy}
+                    labeled
+                    onChange={(values) => change(item, values)}
+                  />
+                </div>
+                <div className="dialog-actions">
+                  <button type="button" onClick={() => setTaskEditorId(null)}>
+                    Done
+                  </button>
+                </div>
+              </Modal>
+            );
+          })()}
+      </AnimatePresence>
+      {count > 0 && (
+        <motion.div
+          key="save-bar"
+          className="save-bar"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={fade}
+          aria-label="Unsaved changes"
+        >
+          <div>
+            <strong>
+              {count} work {count === 1 ? "item" : "items"} changed
+            </strong>
+            <p className="muted">Staged locally · Save to update Azure</p>
+          </div>
+          <div className="actions">
+            <button
+              disabled={busy}
+              onClick={() => {
+                setEdits({});
+                setError("");
+                setMessage("Changes discarded.");
+              }}
+            >
+              Discard changes
+            </button>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void save()}
+            >
+              <Save size={15} />
+              {busy ? "Saving…" : `Save changes (${count})`}
+            </button>
+          </div>
+        </motion.div>
+      )}
+      <AnimatePresence>
+        {titleEditor && (
+          <TitleDialog
+            item={titleEditor}
+            onClose={() => setTitleEditor(null)}
+            onSave={(title) => {
+              change(titleEditor, { "System.Title": title });
+              setTitleEditor(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+function TaskFields({
+  item,
+  edits,
+  busy,
+  onChange,
+  labeled = false,
+}: {
+  item: WorkItem;
+  edits: Edits;
+  busy: boolean;
+  labeled?: boolean;
+  onChange: (values: Record<string, string | number>) => void;
+}) {
+  const w = useWorkspace();
+  const config = w.meta!.projectConfigs?.[item.project ?? ""];
+  const field = (label: string, control: ReactNode) =>
+    labeled ? (
+      <label>
+        {label}
+        {control}
+      </label>
+    ) : (
+      control
+    );
+  const num = (name: "estimate" | "remaining" | "completed", label: string) =>
+    field(
+      label,
+      <input
+        type="number"
+        min="0"
+        max="10000"
+        step="0.01"
+        inputMode="decimal"
+        aria-label={`${item.title} ${name} hours`}
+        disabled={
+          busy ||
+          !(config?.taskFields ?? w.meta!.taskFields).includes(fields[name])
+        }
+        value={edits[item.id]?.values[fields[name]] ?? item[name] ?? ""}
+        onChange={(event) => onChange({ [fields[name]]: event.target.value })}
+      />,
+    );
+  return (
+    <>
+      {field(
+        "State",
+        <select
+          aria-label={`${item.title} state`}
+          value={item.state}
+          disabled={busy}
+          onChange={(event) => onChange({ "System.State": event.target.value })}
+        >
+          {[
+            ...new Set([
+              item.state,
+              ...(config?.taskStates ?? w.meta!.taskStates),
+            ]),
+          ].map((state) => (
+            <option key={state}>{state}</option>
+          ))}
+        </select>,
+      )}
+      {field(
+        "Assignee",
+        <select
+          aria-label={`${item.title} assignee`}
+          value={item.assignedTo}
+          disabled={busy}
+          onChange={(event) =>
+            onChange({ "System.AssignedTo": event.target.value })
+          }
+        >
+          <option value="">Unassigned</option>
+          {item.assignedTo &&
+            !w.meta!.people.some(
+              (person) => person.identity === item.assignedTo,
+            ) && <option value={item.assignedTo}>{item.assignedTo}</option>}
+          {w.meta!.people.map((person) => (
+            <option key={person.id} value={person.identity}>
+              {person.name}
+            </option>
+          ))}
+        </select>,
+      )}
+      {num("estimate", "Original estimate (hours)")}
+      {num("remaining", "Remaining work (hours)")}
+      {num("completed", "Completed work (hours)")}
+      {labeled && (
+        <p className="field-help">
+          Fields unavailable in this project's process are disabled.
+        </p>
       )}
     </>
   );
 }
+
+function TaskTitleField({
+  item,
+  disabled,
+  onChange,
+}: {
+  item: WorkItem;
+  disabled: boolean;
+  onChange: (title: string) => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  return (
+    <label className="task-detail-fields">
+      Title
+      <input
+        aria-label="Work item title"
+        maxLength={255}
+        disabled={disabled}
+        value={title}
+        aria-invalid={!title.trim()}
+        onChange={(event) => {
+          const value = event.target.value;
+          setTitle(value);
+          if (value.trim()) onChange(value.trim());
+        }}
+      />
+      {!title.trim() && (
+        <span role="alert">
+          Enter a title. The last valid title is kept until you do.
+        </span>
+      )}
+    </label>
+  );
+}
+
 function ItemRow({
   item,
   edits,
@@ -1156,6 +1424,8 @@ function ItemRow({
   onPlan,
   onChange,
   onEditTitle,
+  compact,
+  onEditTask,
 }: {
   item: WorkItem;
   edits: Edits;
@@ -1166,26 +1436,14 @@ function ItemRow({
   onPlan: () => void;
   onChange: (values: Record<string, string | number>) => void;
   onEditTitle: () => void;
+  compact: boolean;
+  onEditTask: () => void;
 }) {
-  const w = useWorkspace();
-  const config = w.meta!.projectConfigs?.[item.project ?? ""];
-  const num = (name: "estimate" | "remaining" | "completed") => (
-    <input
-      type="number"
-      min="0"
-      max="10000"
-      step="0.01"
-      aria-label={`${item.title} ${name} hours`}
-      disabled={
-        busy ||
-        !(config?.taskFields ?? w.meta!.taskFields).includes(fields[name])
-      }
-      value={edits[item.id]?.values[fields[name]] ?? item[name] ?? ""}
-      onChange={(e) => onChange({ [fields[name]]: e.target.value })}
-    />
-  );
   return (
-    <div className="work-row" data-dirty={!!edits[item.id]}>
+    <div
+      className={`work-row${compact ? " work-row-mobile" : ""}`}
+      data-dirty={!!edits[item.id]}
+    >
       <div className="work-title">
         <input
           type="checkbox"
@@ -1201,18 +1459,17 @@ function ItemRow({
           </span>
           <br />
           <span className="work-title-text">{item.title}</span>
-          <button
-            type="button"
-            className="icon title-edit"
-            aria-label={`Edit title: ${item.title}`}
-            disabled={busy}
-            onClick={(event) => {
-              event.preventDefault();
-              onEditTitle();
-            }}
-          >
-            <Pencil size={14} />
-          </button>
+          {!compact && (
+            <button
+              type="button"
+              className="icon title-edit"
+              aria-label={`Edit title: ${item.title}`}
+              disabled={busy}
+              onClick={onEditTitle}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
           {item.url && (
             <a
               className="external"
@@ -1224,44 +1481,28 @@ function ItemRow({
               <ExternalLink size={12} />
             </a>
           )}
+          {compact && (
+            <span className="task-row-summary">
+              <span className="task-status">{item.state}</span>
+              <span>{item.estimate ?? 0}h estimated</span>
+            </span>
+          )}
         </span>
       </div>
-      <select
-        aria-label={`${item.title} state`}
-        value={item.state}
-        disabled={busy}
-        onChange={(e) => onChange({ "System.State": e.target.value })}
-      >
-        {[
-          ...new Set([
-            item.state,
-            ...(config?.taskStates ?? w.meta!.taskStates),
-          ]),
-        ].map((s) => (
-          <option key={s}>{s}</option>
-        ))}
-      </select>
-      <select
-        aria-label={`${item.title} assignee`}
-        value={item.assignedTo}
-        disabled={busy}
-        onChange={(e) => onChange({ "System.AssignedTo": e.target.value })}
-      >
-        <option value="">Unassigned</option>
-        {item.assignedTo &&
-          !w.meta!.people.some((p) => p.identity === item.assignedTo) && (
-            <option value={item.assignedTo}>{item.assignedTo}</option>
-          )}
-        {w.meta!.people.map((p) => (
-          <option key={p.id} value={p.identity}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-      {num("estimate")}
-      {num("remaining")}
-      {num("completed")}
+      {compact ? (
+        <button
+          type="button"
+          disabled={busy}
+          aria-label={`Edit task: ${item.title}`}
+          onClick={onEditTask}
+        >
+          Edit
+        </button>
+      ) : (
+        <TaskFields item={item} edits={edits} busy={busy} onChange={onChange} />
+      )}
       <button
+        type="button"
         className={`icon ${planned ? "planned" : ""}`}
         aria-label={`${planned ? "Remove from" : "Add to"} today: ${item.title}`}
         onClick={onPlan}
@@ -1274,6 +1515,7 @@ function ItemRow({
     </div>
   );
 }
+
 function TitleDialog({
   item,
   onClose,
@@ -1286,57 +1528,41 @@ function TitleDialog({
   const [title, setTitle] = useState(item.title);
   const trimmed = title.trim();
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="title-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-title-heading"
-        onMouseDown={(event) => event.stopPropagation()}
+    <Modal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Edit title"
+      description={`${item.type} #${item.id}`}
+      closeLabel="Close title editor"
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (trimmed) onSave(trimmed);
+        }}
       >
-        <div className="dialog-heading">
-          <div>
-            <p className="eyebrow">
-              {item.type} #{item.id}
-            </p>
-            <h2 id="edit-title-heading">Edit title</h2>
-          </div>
-          <button
-            className="icon"
-            type="button"
-            aria-label="Close title editor"
-            onClick={onClose}
-          >
-            <X size={18} />
+        <label>
+          Title
+          <input
+            autoFocus
+            aria-label="Work item title"
+            maxLength={255}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary" type="submit" disabled={!trimmed}>
+            Save title
           </button>
         </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (trimmed) onSave(trimmed);
-          }}
-        >
-          <label>
-            Title
-            <input
-              autoFocus
-              aria-label="Work item title"
-              maxLength={255}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </label>
-          <div className="dialog-actions">
-            <button type="button" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="primary" type="submit" disabled={!trimmed}>
-              Save title
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+      </form>
+    </Modal>
   );
 }
 function SelectAll({

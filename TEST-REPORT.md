@@ -1,11 +1,21 @@
 # Validation report
 
-Validated on 2026-10-06.
+Validated on 2026-10-22.
 
 - Production build passes, including TypeScript checking.
-- Vitest: 53 tests across 11 files.
-- Chromium: 7 browser tests.
-- Desktop and 390px mobile layouts reviewed; mobile viewport has no horizontal overflow.
+- Vitest: 128 tests across 19 files.
+- Chrome: 24 browser tests using mocked Azure HTTP responses.
+- All seven screens checked in light and dark at 390px, 768px, 1024px, and 1440px, with 56 screenshots and no horizontal overflow or controls extending outside the viewport.
+
+## Workspace redesign
+
+- Appearance defaults to the device theme, persists explicit preferences across reloads, follows device changes in System mode, and remains usable when browser storage is unavailable.
+- Compact navigation and task panels support Escape, focus trapping, and focus restoration. Mobile edits survive panel closure, desktop resizing, and refresh, and are submitted only through Save changes.
+- Reduced motion removes panel translation. Collapsed sections remain out of keyboard and screen-reader navigation while preserving form state.
+- Compact hour totals preserve independent calculation state and preview staged values. Allocation, Save/Discard, status propagation, and revision-checked updates retain their existing behavior.
+- The 500-task list remains virtualized, reaches its final row, and preserves edits through scrolling and refresh. Short lists fit their contents.
+- Creation preserves shared inheritance, explicit review, default tasks, successful reset, and partial-failure protections. Template deletion requires confirmation and cancellation preserves the template.
+- Current previews: docs/mongiz-light-preview.png, docs/mongiz-dark-preview.png, and docs/mongiz-mobile-dark-preview.png.
 
 ## Current request
 

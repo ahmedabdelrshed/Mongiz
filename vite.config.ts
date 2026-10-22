@@ -10,6 +10,12 @@ export default defineConfig({
           "microsoft-auth": ["@azure/msal-browser"],
           query: ["@tanstack/react-query"],
           validation: ["zod"],
+          motion: ["framer-motion"],
+          overlays: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-popover",
+            "cmdk",
+          ],
         },
       },
     },

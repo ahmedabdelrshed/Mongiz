@@ -14,6 +14,8 @@ import {
 } from "./model";
 import { resolveIteration, submitBatch } from "./submit";
 import { StoryEditor } from "./StoryEditor";
+import { ConfirmButton } from "../../shared/ui/Dialog";
+import { Disclosure, PageEntry } from "../../shared/ui/Motion";
 import { PasteSrsPanel } from "./PasteSrsPanel";
 import type { Metadata } from "../../shared/api/types";
 import { fields } from "../../shared/api/types";
@@ -72,7 +74,14 @@ export function BulkCreatePage() {
   }, []);
   return (
     <>
-      <section className="panel">
+      <PageTitle
+        title="Create stories"
+        subtitle="Turn requirements into stories. Set shared details once, then review your batch."
+      />
+      <section className="panel creation-project">
+        <div className="step-label">
+          <span>1</span>Project
+        </div>
         <label>
           Destination project
           <select
@@ -123,6 +132,7 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
   const [resultMap, setResultMap] = useState<Results>({});
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -132,6 +142,7 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
   const started = Object.keys(resultMap).length > 0;
   const locked = busy || started;
   const sharedTasks = useRef<HTMLDivElement>(null);
+  const scrollAfterPaste = useRef(false);
   const features = meta.features.filter((f) => f.parentId === draft.epicId);
   let iteration = "Choose destination";
   try {
@@ -256,29 +267,23 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
   };
   return (
     <>
-      <PageTitle
-        title="Create stories"
-        subtitle="Set shared values once. Build several stories and their tasks."
-        action={
-          <div className="actions">
-            <button onClick={exportDraft}>
-              <Download size={15} />
-              Export
-            </button>
-            <button disabled={locked} onClick={() => file.current?.click()}>
-              <Upload size={15} />
-              Import
-            </button>
-            <input
-              type="file"
-              accept="application/json"
-              hidden
-              ref={file}
-              onChange={importDraft}
-            />
-          </div>
-        }
-      />
+      <div className="actions batch-file-actions">
+        <button onClick={exportDraft}>
+          <Download size={15} />
+          Export
+        </button>
+        <button disabled={locked} onClick={() => file.current?.click()}>
+          <Upload size={15} />
+          Import
+        </button>
+        <input
+          type="file"
+          accept="application/json"
+          hidden
+          ref={file}
+          onChange={importDraft}
+        />
+      </div>
       {meta.warnings.map((x) => (
         <Notice key={x}>{x}</Notice>
       ))}
@@ -289,31 +294,55 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
         </Notice>
       )}
       {!locked && !!w.targetProject && !!w.creationMeta && (
-        <PasteSrsPanel
-          stories={draft.stories}
-          onAdd={(items) => {
-            change({
-              ...draft,
-              stories: [
-                ...draft.stories.filter(
-                  (s) => s.title.trim() || s.criteria.trim() || s.tasks.length,
-                ),
-                ...items,
-              ],
-            });
-            requestAnimationFrame(() =>
-              sharedTasks.current?.scrollIntoView?.({
-                block: "start",
-                behavior: "auto",
-              }),
-            );
-            setMessage(
-              `${items.length} SRS stories added to the draft. Shared settings applied.`,
-            );
-          }}
-        />
+        <div className="panel paste-panel">
+          <div className="step-label">
+            <span>2</span>Requirements
+          </div>
+          <Disclosure
+            title={
+              draft.stories.length
+                ? "Add more requirements"
+                : "Paste SRS stories"
+            }
+            open={pasteOpen}
+            onOpenChange={setPasteOpen}
+            onAnimationComplete={() => {
+              if (!pasteOpen && scrollAfterPaste.current) {
+                scrollAfterPaste.current = false;
+                sharedTasks.current?.scrollIntoView?.({
+                  block: "start",
+                  behavior: "auto",
+                });
+              }
+            }}
+          >
+            <PasteSrsPanel
+              stories={draft.stories}
+              onAdd={(items) => {
+                scrollAfterPaste.current = true;
+                setPasteOpen(false);
+                change({
+                  ...draft,
+                  stories: [
+                    ...draft.stories.filter(
+                      (s) =>
+                        s.title.trim() || s.criteria.trim() || s.tasks.length,
+                    ),
+                    ...items,
+                  ],
+                });
+                setMessage(
+                  `${items.length} SRS stories added to the draft. Shared settings applied.`,
+                );
+              }}
+            />
+          </Disclosure>
+        </div>
       )}
       <section className="panel shared-panel">
+        <div className="step-label">
+          <span>3</span>Shared settings
+        </div>
         <div className="section-heading">
           <h2>Shared settings</h2>
           <span className="pill">Applied to all stories</span>
@@ -499,6 +528,11 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
           </span>
         </div>
       </section>
+      {draft.stories.length > 0 && (
+        <div className="step-label">
+          <span>4</span>Stories · {draft.stories.length} in this batch
+        </div>
+      )}
       {draft.stories.map((story, index) => (
         <StoryEditor
           pointsSupported={!!meta.storyPointField}
@@ -531,50 +565,53 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
       {error && <Notice tone="error">{error}</Notice>}
       {message && <Notice tone="success">{message}</Notice>}
       {review && !started && (
-        <section className="panel review">
-          <h2>Review batch</h2>
-          <p>
-            <strong>
-              {count.stories} {meta.storyType.toLowerCase()}s + {count.tasks}{" "}
-              tasks
-            </strong>{" "}
-            under {meta.features.find((f) => f.id === draft.featureId)?.name}
-          </p>
-          <p>
-            Destination: <strong>{iteration}</strong> · {count.hours} estimated
-            hours
-          </p>
-          <p className="muted">
-            {w.settings.mode === "demo"
-              ? "Creates local demo items only."
-              : "Creates work items in Azure under your signed-in identity. Stories and tasks receive no tags or Remaining Work hours. Task hours are sent only to Original Estimate when supported."}
-          </p>
-        </section>
+        <PageEntry>
+          <section className="panel review">
+            <div className="step-label">
+              <span>5</span>Review
+            </div>
+            <h2>Review batch</h2>
+            <p>
+              <strong>
+                {count.stories} {meta.storyType.toLowerCase()}s + {count.tasks}{" "}
+                tasks
+              </strong>{" "}
+              under {meta.features.find((f) => f.id === draft.featureId)?.name}
+            </p>
+            <p>
+              Destination: <strong>{iteration}</strong> · {count.hours}{" "}
+              estimated hours
+            </p>
+            <p className="muted">
+              {w.settings.mode === "demo"
+                ? "Creates local demo items only."
+                : "Creates work items in Azure under your signed-in identity. Stories and tasks receive no tags or Remaining Work hours. Task hours are sent only to Original Estimate when supported."}
+            </p>
+          </section>
+        </PageEntry>
       )}
       {Object.entries(resultMap)
         .filter(([, r]) => r.status === "uncertain")
         .map(([id, r]) => (
           <Notice key={id}>
             Uncertain item: {r.message}{" "}
-            <button
+            <ConfirmButton
               disabled={busy}
-              onClick={() => {
-                if (
-                  confirm(
-                    "Only continue if you checked Azure and confirmed this item was NOT created. Retry can otherwise duplicate it.",
-                  )
-                )
-                  saveResults({
-                    ...resultMap,
-                    [id]: {
-                      status: "failed",
-                      message: "User confirmed no item was created.",
-                    },
-                  });
+              title="Allow this item to be retried?"
+              description="Only continue if you checked Azure and confirmed this item was NOT created. Retry can otherwise duplicate it."
+              confirmLabel="Confirm and allow retry"
+              onConfirm={() => {
+                saveResults({
+                  ...resultMap,
+                  [id]: {
+                    status: "failed",
+                    message: "User confirmed no item was created.",
+                  },
+                });
               }}
             >
               I verified it was not created
-            </button>
+            </ConfirmButton>
           </Notice>
         ))}
       <footer className="batch-footer">

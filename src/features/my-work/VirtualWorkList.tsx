@@ -56,11 +56,17 @@ export function VirtualWorkList({
     (index: number) => heights[index] ?? 100,
     [heights],
   );
+  const contentHeight = Array.from({ length: rowCount }, (_, index) =>
+    rowHeight(index),
+  ).reduce((total, height) => total + height, 0);
   return (
     <List
       className="virtual-work-list"
       aria-label="Stories and tasks"
-      style={{ height: "min(70vh, 720px)", minHeight: 360 }}
+      style={{
+        height: `min(70vh, 720px, ${Math.max(180, contentHeight)}px)`,
+        minHeight: 180,
+      }}
       defaultHeight={650}
       rowCount={rowCount}
       rowHeight={rowHeight}

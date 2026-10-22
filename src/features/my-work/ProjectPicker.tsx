@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useWorkspace } from "../../app/Workspace";
+import { Reveal } from "../../shared/ui/Motion";
 
 export function ProjectPicker({ disabled = false }: { disabled?: boolean }) {
   const w = useWorkspace();
@@ -9,22 +10,27 @@ export function ProjectPicker({ disabled = false }: { disabled?: boolean }) {
   useEffect(() => setIds(w.selectedWorkProjectIds), [selectedKey]);
   const available = ids.filter((id) => w.projects.some((p) => p.id === id));
   return (
-    <section className="hours-summary" aria-label="My project selection">
-      <h2>My projects</h2>
-      <p className="muted">
-        {w.workProjects.length
-          ? `Loading only: ${w.workProjects.map((p) => p.name).join(", ")}.`
-          : "Select your projects from the projects your token can access."}{" "}
-        The All tab includes only these projects. Hour totals include all
-        accessible projects. Pending edits are kept when you switch.
-      </p>
+    <section className="project-picker" aria-label="My project selection">
+      <div>
+        <h2>My projects</h2>
+        <p className="muted">
+          {w.workProjects.length
+            ? `Loading only: ${w.workProjects.map((p) => p.name).join(", ")}.`
+            : "Select your projects from the projects your token can access."}{" "}
+          Hour totals include all accessible projects.
+        </p>
+      </div>
       {disabled && <p className="muted">Please wait until saving finishes.</p>}
       {w.workProjects.length > 0 && (
-        <button disabled={disabled} onClick={() => setOpen(!open)}>
+        <button
+          disabled={disabled}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
           {open ? "Cancel project selection" : "Change my projects"}
         </button>
       )}
-      {open && (
+      <Reveal open={open}>
         <fieldset disabled={disabled}>
           <legend>Projects to load</legend>
           {!w.projects.length && (
@@ -63,7 +69,7 @@ export function ProjectPicker({ disabled = false }: { disabled?: boolean }) {
             Load selected projects
           </button>
         </fieldset>
-      )}
+      </Reveal>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ClipboardPaste, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Notice } from "../../shared/ui/Common";
 import { copyTasks, defaultTasks, type StoryDraft } from "./model";
 import { parseSrs, srsCode } from "./parseSrs";
@@ -37,13 +37,7 @@ export function PasteSrsPanel({
     setTaskMode("standard");
   };
   return (
-    <section className="panel paste-panel" aria-label="Paste SRS stories">
-      <div className="section-heading">
-        <h2>
-          <ClipboardPaste size={18} />
-          Paste SRS stories
-        </h2>
-      </div>
+    <section aria-label="Paste SRS stories">
       <label>
         Requirements text
         <textarea

@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { fade } from "./Motion";
 export function Notice({
   children,
   tone = "info",
@@ -14,7 +16,10 @@ export function Notice({
 }) {
   const descriptionId = useId();
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={fade}
       className={`notice ${tone}${compact ? " compact" : ""}`}
       role={tone === "error" ? "alert" : "status"}
       tabIndex={compact ? 0 : undefined}
@@ -26,10 +31,13 @@ export function Notice({
       ) : (
         <AlertCircle size={17} />
       )}
-      <div id={compact ? descriptionId : undefined} className={compact ? "notice-tooltip" : undefined}>
+      <div
+        id={compact ? descriptionId : undefined}
+        className={compact ? "notice-tooltip" : undefined}
+      >
         {children}
       </div>
-    </div>
+    </motion.div>
   );
 }
 export function Loading({ label = "Loading workspace…" }: { label?: string }) {

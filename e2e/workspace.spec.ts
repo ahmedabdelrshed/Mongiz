@@ -1,45 +1,86 @@
 import { test, expect, type Page } from "@playwright/test";
+import { navigate, chooseWorkFilter, openHourSettings } from "./ui";
 import ExcelJS from "exceljs";
 
-test("Story points navigation loads a project, filters stories and saves each project's estimation field on desktop and mobile", async ({ page }, testInfo) => {
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
+});
+
+test("Story points navigation loads a project, filters stories and saves each project's estimation field on desktop and mobile", async ({
+  page,
+}, testInfo) => {
   const { calls } = await azureFixture(page, true);
-  await page.route("**/_apis/wit/classificationnodes/iterations?*", async (route) => {
-    const project = route.request().url().includes("project2") ? "Platform" : "OMS";
-    await route.fulfill({ json: {
-      id: 1, name: project, children: [{ id: 2, name: "Sprint 1" }],
-    } });
-  });
-  await page.getByRole("link", { name: "Story points", exact: true }).click();
+  await page.route(
+    "**/_apis/wit/classificationnodes/iterations?*",
+    async (route) => {
+      const project = route.request().url().includes("project2")
+        ? "Platform"
+        : "OMS";
+      await route.fulfill({
+        json: {
+          id: 1,
+          name: project,
+          children: [{ id: 2, name: "Sprint 1" }],
+        },
+      });
+    },
+  );
+  await navigate(page, "Story points");
   await expect(page).toHaveURL(/\/story-points$/);
   await page.getByLabel("Project for story points").selectOption("project1");
-  await expect(page.getByLabel("Story points for #10", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Story points for #20", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Story points for #11", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Filter sprint", exact: true }).click();
-  await page.getByRole("dialog").getByText("OMS\\Sprint 1", { exact: true }).click();
+  await expect(
+    page.getByLabel("Story points for #10", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Story points for #20", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByLabel("Story points for #11", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Filter sprint", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByText("OMS\\Sprint 1", { exact: true })
+    .click();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Filter story state", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Filter story state", exact: true })
+    .click();
   await page.getByRole("dialog").getByText("Active", { exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByText("No matching stories")).toBeVisible();
-  await page.getByRole("button", { name: "Filter story state", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Filter story state", exact: true })
+    .click();
   await page.getByRole("dialog").getByText("New", { exact: true }).click();
   await page.keyboard.press("Escape");
   await page.getByLabel("Story points for #10", { exact: true }).fill("3");
   await page.getByRole("button", { name: "Save story points for #10" }).click();
   await expect(page.getByText("Saved 3 story points for #10.")).toBeVisible();
-  await expect(page.getByLabel("Story points for #10", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByLabel("Story points for #10", { exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText("All stories have story points")).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel("Project for story points").selectOption("project2");
-  await expect(page.getByLabel("Story points for #20", { exact: true })).toBeVisible();
-  for (const element of [page.getByLabel("Story points for #20", { exact: true }), page.getByRole("button", { name: "Save story points for #20" })]) {
+  await expect(
+    page.getByLabel("Story points for #20", { exact: true }),
+  ).toBeVisible();
+  for (const element of [
+    page.getByLabel("Story points for #20", { exact: true }),
+    page.getByRole("button", { name: "Save story points for #20" }),
+  ]) {
     const bounds = (await element.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
   }
-  await page.screenshot({ path: testInfo.outputPath("story-points-mobile.png"), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("story-points-mobile.png"),
+    fullPage: true,
+  });
   await page.getByLabel("Story points for #20", { exact: true }).fill("0");
   await page.getByRole("button", { name: "Save story points for #20" }).click();
   await expect(page.getByText("Saved 0 story points for #20.")).toBeVisible();
@@ -47,7 +88,11 @@ test("Story points navigation loads a project, filters stories and saves each pr
   expect(patches.map((call) => call.body)).toEqual([
     [
       { op: "test", path: "/rev", value: 1 },
-      { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.StoryPoints", value: 3 },
+      {
+        op: "add",
+        path: "/fields/Microsoft.VSTS.Scheduling.StoryPoints",
+        value: 3,
+      },
     ],
     [
       { op: "test", path: "/rev", value: 1 },
@@ -60,7 +105,7 @@ test("Excel export downloads all filtered rows with local edits, including offsc
   page,
 }) => {
   const { calls } = await azureFixture(page, true, 500);
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
   await expect(page.getByLabel("Item 1000 estimate hours")).toBeVisible();
@@ -82,10 +127,19 @@ test("Excel export downloads all filtered rows with local edits, including offsc
   expect(tasks.getCell("A501").value).toBe(1499);
   expect(tasks.getCell("J2").value).toBe(8);
   expect(tasks.columnCount).toBe(13);
-  expect(tasks.getCell("D2").value).toEqual({ text: "Item 1000", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/1000" });
-  expect(tasks.getCell("I2").value).toEqual({ text: "Item 10", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10" });
+  expect(tasks.getCell("D2").value).toEqual({
+    text: "Item 1000",
+    hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/1000",
+  });
+  expect(tasks.getCell("I2").value).toEqual({
+    text: "Item 10",
+    hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10",
+  });
   expect(workbook.getWorksheet("User Stories")!.columnCount).toBe(10);
-  expect(workbook.getWorksheet("User Stories")!.getCell("D2").value).toEqual({ text: "Item 10", hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10" });
+  expect(workbook.getWorksheet("User Stories")!.getCell("D2").value).toEqual({
+    text: "Item 10",
+    hyperlink: "https://dev.azure.com/company/OMS/_workitems/edit/10",
+  });
   expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
   await page.getByLabel("Search work").fill("Item 1499");
   const filteredDownload = page.waitForEvent("download");
@@ -322,7 +376,8 @@ async function azureFixture(
         route.request().method() === "PATCH"
       ) {
         const id = Number(path.split("/").pop());
-        const isTask = id === 11 || id === 21 || (id >= 1000 && id < 1000 + taskCount);
+        const isTask =
+          id === 11 || id === 21 || (id >= 1000 && id < 1000 + taskCount);
         const project = id === 20 || id === 21 ? "Platform" : "OMS";
         const changes = Object.fromEntries(
           body
@@ -334,12 +389,17 @@ async function azureFixture(
           rev: 2,
           fields: {
             "System.Title": isTask ? taskTitle(id) : `Item ${id}`,
-            "System.WorkItemType":
-              isTask ? "Task" : id === 10 ? "User Story" : "Product Backlog Item",
+            "System.WorkItemType": isTask
+              ? "Task"
+              : id === 10
+                ? "User Story"
+                : "Product Backlog Item",
             "System.TeamProject": project,
             "System.State": isTask ? taskState : "New",
             "System.AssignedTo": "ahmed@example.com",
-            "System.IterationPath": withHours ? `${project}\\Sprint 1` : project,
+            "System.IterationPath": withHours
+              ? `${project}\\Sprint 1`
+              : project,
             ...changes,
           },
         };
@@ -360,11 +420,11 @@ test("Azure sign-in skips project/team; My Work reads all projects and creation 
   const { token, calls } = await azureFixture(page);
   await expect(page.getByLabel("Project", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Team", { exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByLabel("Load project Platform").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
-  await page.getByLabel("Filter destination").selectOption("all");
+  await chooseWorkFilter(page, "Filter destination", "All iterations");
   await expect(
     page.getByRole("heading", { name: "Item 10", exact: true }),
   ).toBeVisible();
@@ -429,14 +489,15 @@ test("Azure sign-in skips project/team; My Work reads all projects and creation 
 test("switches list projects with pending edits while hours total all accessible projects", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
   const { token, calls } = await azureFixture(page, true);
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await expect(page.getByLabel("Load project OMS")).toBeVisible();
   await expect(page.getByText("Estimated: 10h").first()).toBeVisible();
   await expect(page.getByLabel("Filter user")).toHaveCount(0);
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
-  await page.getByLabel("Filter destination").selectOption("all");
+  await chooseWorkFilter(page, "Filter destination", "All iterations");
   await expect(
     page.getByRole("heading", { name: "Item 10", exact: true }),
   ).toBeVisible();
@@ -461,21 +522,21 @@ test("switches list projects with pending edits while hours total all accessible
     JSON.parse(localStorage.getItem("taskflow:v1:work-project-selections")!),
   );
   expect(Object.values(selections)).toEqual([["project1"]]);
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "Settings");
+  await navigate(page, "My work");
   await expect(
     page.getByText("Loading only: OMS.", { exact: false }),
   ).toBeVisible();
   await page.reload();
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await navigate(page, "Settings");
   await page.getByLabel(/^Personal access token/).fill(token);
   await page.getByRole("button", { name: "Connect with token" }).click();
   await expect(page.getByText(/Connected as ahmed/)).toBeVisible();
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await expect(
     page.getByText("Loading only: OMS.", { exact: false }),
   ).toBeVisible();
-  await page.getByLabel("Filter destination").selectOption("all");
+  await chooseWorkFilter(page, "Filter destination", "All iterations");
   await page.getByLabel("Item 10 story points").fill("6");
   await expect(
     page.getByRole("button", { name: "Change my projects" }),
@@ -491,7 +552,9 @@ test("switches list projects with pending edits while hours total all accessible
     page.getByRole("heading", { name: "Item 10", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByText("Estimated: 10h").first()).toBeVisible();
-  await expect(page.getByLabel("Calculation sprint")).toHaveValue("current");
+  await expect(
+    page.getByLabel("Calculation sprints", { exact: true }),
+  ).toHaveText("Current sprints");
   await page.getByRole("button", { name: /Save changes/ }).click();
   await expect(page.getByText("Saved changes to 1 work items.")).toBeVisible();
   expect(
@@ -539,7 +602,7 @@ test("500 tasks are virtualized, edits survive scrolling, and sidebar stays fixe
   page,
 }) => {
   await azureFixture(page, true, 500);
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
   await expect(page.getByLabel("Item 1000 estimate hours")).toBeVisible();
@@ -590,7 +653,7 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
   page,
 }) => {
   const { calls } = await azureFixture(page);
-  await page.getByRole("link", { name: "Create stories", exact: true }).click();
+  await navigate(page, "Create stories");
   await expect(page.getByLabel("Paste SRS requirements")).toHaveCount(0);
   await page.getByLabel("Destination project").selectOption("project1");
   await expect(page.getByLabel("Epic", { exact: true })).toBeEnabled();
@@ -613,13 +676,17 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
   await expect(page.getByLabel("Story 2 task 1 title")).toHaveValue(
     "Build frontend screens",
   );
-  const frontend = (await page
-    .getByRole("region", { name: "Frontend shared tasks" })
-    .boundingBox())!;
-  const backend = (await page
-    .getByRole("region", { name: "Backend shared tasks" })
-    .boundingBox())!;
-  expect(frontend.y).toBe(backend.y);
+  const [frontend, backend] = await page
+    .locator(".shared-task-columns")
+    .evaluate((element) =>
+      [...element.querySelectorAll<HTMLElement>(".shared-task-column")]
+        .slice(0, 2)
+        .map((column) => {
+          const { x, y, width, height } = column.getBoundingClientRect();
+          return { x, y, width, height };
+        }),
+    );
+  expect(Math.abs(frontend.y - backend.y)).toBeLessThan(1);
   expect(frontend.x + frontend.width).toBeLessThan(backend.x);
   await page.screenshot({
     path: "test-results/shared-tasks-desktop.png",
@@ -665,127 +732,269 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
   ).toBe(true);
 });
 
-test("Hour calculations combine all projects only for sprint dates containing today", async ({ page }, testInfo) => {
+test("Hour calculations combine all projects only for sprint dates containing today", async ({
+  page,
+}, testInfo) => {
   await page.clock.setFixedTime(new Date("2026-05-12T12:00:00Z"));
   const { calls } = await azureFixture(page, true, 3);
   await page.route("**/teamsettings/iterations?*", async (route) => {
     const other = route.request().url().includes("project2");
     const project = other ? "Platform" : "OMS";
-    await route.fulfill({ json: { value: [{ id: project, name: "Sprint 1", path: `${project}\\Sprint 1`,
-      attributes: { timeFrame: "future", startDate: other ? "2026-05-11" : "2026-05-04", finishDate: other ? "2026-05-15" : "2026-05-17" },
-    }] } });
+    await route.fulfill({
+      json: {
+        value: [
+          {
+            id: project,
+            name: "Sprint 1",
+            path: `${project}\\Sprint 1`,
+            attributes: {
+              timeFrame: "future",
+              startDate: other ? "2026-05-11" : "2026-05-04",
+              finishDate: other ? "2026-05-15" : "2026-05-17",
+            },
+          },
+        ],
+      },
+    });
   });
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
   const summary = page.getByRole("region", { name: "Sprint and month hours" });
-  const current = summary.getByRole("article").filter({ has: page.getByRole("heading", { name: "Current sprint", exact: true }) });
+  await openHourSettings(page);
+  const current = summary.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Current sprint", exact: true }),
+  });
   await expect(current.getByText("Estimated: 16h")).toBeVisible();
   await expect(current.getByText("Completed: 10h")).toBeVisible();
-  await expect(summary.getByRole("article", { name: "OMS", exact: true }).getByText("Estimated: 9h")).toBeVisible();
-  await expect(summary.getByRole("article", { name: "Platform", exact: true }).getByText("Estimated: 7h")).toBeVisible();
-  await expect(summary.getByText(/Sprints containing today \(12\/05\/2026\): 2/)).toBeVisible();
-  await expect(summary.locator("details")).not.toHaveAttribute("open");
+  await expect(
+    summary
+      .getByRole("article", { name: "OMS", exact: true })
+      .getByText("Estimated: 9h"),
+  ).toBeVisible();
+  await expect(
+    summary
+      .getByRole("article", { name: "Platform", exact: true })
+      .getByText("Estimated: 7h"),
+  ).toBeVisible();
+  await expect(
+    summary.getByText(/Sprints containing today \(12\/05\/2026\): 2/),
+  ).toBeVisible();
+  await expect(
+    summary.getByRole("button", { name: "Month totals", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
   await page.getByLabel("Search work").fill(" #1000 ");
   await expect(current.getByText("Estimated: 16h")).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("hours-current-desktop.png"), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("hours-current-desktop.png"),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await summary.scrollIntoViewIfNeeded();
   await expect(current.getByText("Estimated: 16h")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("hours-current-mobile.png"), fullPage: true });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("hours-current-mobile.png"),
+    fullPage: true,
+  });
   await page.clock.setFixedTime(new Date("2026-05-16T12:00:00Z"));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(current.getByText("Estimated: 9h")).toBeVisible();
-  await expect(summary.getByRole("article", { name: "Platform", exact: true })).toHaveCount(0);
+  await expect(
+    summary.getByRole("article", { name: "Platform", exact: true }),
+  ).toHaveCount(0);
   await page.clock.setFixedTime(new Date("2026-05-18T12:00:00Z"));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(current.getByText(/No sprint date range contains 18\/05\/2026/)).toBeVisible();
+  await expect(
+    current.getByText(/No sprint date range contains 18\/05\/2026/),
+  ).toBeVisible();
   expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
 });
 
-test("My Work search resets a scrolled list and fills every filtered task including offscreen rows", async ({ page }, testInfo) => {
+test("My Work search resets a scrolled list and fills every filtered task including offscreen rows", async ({
+  page,
+}, testInfo) => {
   await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
-  const { calls } = await azureFixture(page, true, 80, "Closed", (id) => `Implement frontend ${id}`);
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  const { calls } = await azureFixture(
+    page,
+    true,
+    80,
+    "Closed",
+    (id) => `Implement frontend ${id}`,
+  );
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
-  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toBeVisible();
+  await expect(
+    page.getByLabel("Implement frontend 1000 estimate hours"),
+  ).toBeVisible();
   const list = page.getByRole("list", { name: "Stories and tasks" });
-  await expect.poll(async () => {
-    await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-    return page.getByLabel("Implement frontend 1079 estimate hours").isVisible();
-  }).toBe(true);
+  await expect
+    .poll(async () => {
+      await list.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      return page
+        .getByLabel("Implement frontend 1079 estimate hours")
+        .isVisible();
+    })
+    .toBe(true);
   const search = page.getByLabel("Search work");
   await search.fill(" #1079 ");
-  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Item 10", exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("Implement frontend 1079 estimate hours"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Item 10", exact: true }),
+  ).toBeVisible();
   await search.fill("");
   await search.pressSequentially("  ITEM 10  ");
-  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toBeVisible();
-  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toHaveCount(0);
+  await expect(
+    page.getByLabel("Implement frontend 1000 estimate hours"),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Implement frontend 1079 estimate hours"),
+  ).toHaveCount(0);
+  await openHourSettings(page);
   await page.getByLabel("Sprint target maximum").fill("400");
   await page.getByLabel("Sprint target minimum").fill("300");
   await page.getByLabel("Calculation user").selectOption("omar@example.com");
-  await page.getByRole("button", { name: "Fill sprint minimum" }).click();
+  await page
+    .getByRole("button", { name: "Configure sprint minimum", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Fill sprint minimum", exact: true })
+    .click();
   await expect(page.getByText(/80 tasks staged/)).toBeVisible();
-  await expect(page.getByLabel("Implement frontend 1000 estimate hours")).toHaveValue("3.75");
-  await expect(page.getByLabel("Implement frontend 1000 completed hours")).toHaveValue("3.75");
+  await expect(
+    page.getByLabel("Implement frontend 1000 estimate hours"),
+  ).toHaveValue("3.75");
+  await expect(
+    page.getByLabel("Implement frontend 1000 completed hours"),
+  ).toHaveValue("3.75");
   expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
-  const draft = await page.evaluate(() => JSON.parse(localStorage.getItem("taskflow:v1:ahmed@example.com:company:all-projects:work-edits")!));
+  const draft = await page.evaluate(() =>
+    JSON.parse(
+      localStorage.getItem(
+        "taskflow:v1:ahmed@example.com:company:all-projects:work-edits",
+      )!,
+    ),
+  );
   expect(Object.keys(draft)).toHaveLength(80);
   expect(draft[1079].values).toEqual({
     "Microsoft.VSTS.Scheduling.OriginalEstimate": 3.75,
     "Microsoft.VSTS.Scheduling.CompletedWork": 3.75,
   });
-  await expect.poll(async () => {
-    await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-    return page.getByLabel("Implement frontend 1079 completed hours").isVisible();
-  }).toBe(true);
-  await expect(page.getByLabel("Implement frontend 1079 completed hours")).toHaveValue("3.75");
+  await expect
+    .poll(async () => {
+      await list.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      return page
+        .getByLabel("Implement frontend 1079 completed hours")
+        .isVisible();
+    })
+    .toBe(true);
+  await expect(
+    page.getByLabel("Implement frontend 1079 completed hours"),
+  ).toHaveValue("3.75");
   await page.getByRole("button", { name: "Discard changes" }).click();
   await search.fill(" #1079 ");
-  await expect(page.getByLabel("Implement frontend 1079 estimate hours")).toHaveValue("3");
-  await expect(page.getByLabel("Implement frontend 1079 completed hours")).toHaveValue("2");
-  await page.screenshot({ path: testInfo.outputPath("my-work-fill-desktop.png"), fullPage: true });
+  await expect(
+    page.getByLabel("Implement frontend 1079 estimate hours"),
+  ).toHaveValue("3");
+  await expect(
+    page.getByLabel("Implement frontend 1079 completed hours"),
+  ).toHaveValue("2");
+  await page.screenshot({
+    path: testInfo.outputPath("my-work-fill-desktop.png"),
+    fullPage: true,
+  });
 });
 
-test("My Work category actions fit mobile and save only the searched task's hours", async ({ page }, testInfo) => {
+test("My Work category actions fit mobile and save only the searched task's hours", async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
   const { calls } = await azureFixture(page, true, 3, "Active", (id) =>
     id === 1000 ? "Unit testing" : "Frontend code review",
   );
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
-  await expect(page.getByLabel("Unit testing estimate hours")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit task: Unit testing", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Configure sprint minimum", exact: true })
+    .click();
   const actions = page.getByRole("region", { name: "Fill sprint hours" });
-  await actions.getByRole("button", { name: "Implementation", exact: true }).click();
-  await actions.getByRole("button", { name: "Code review", exact: true }).click();
-  await expect(actions.getByRole("button", { name: "Implementation", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(actions.getByRole("button", { name: "Code review", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(actions.getByRole("button", { name: "Auto", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await actions
+    .getByRole("button", { name: "Implementation", exact: true })
+    .click();
+  await actions
+    .getByRole("button", { name: "Code review", exact: true })
+    .click();
+  await expect(
+    actions.getByRole("button", { name: "Implementation", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    actions.getByRole("button", { name: "Code review", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    actions.getByRole("button", { name: "Auto", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
   await actions.getByRole("button", { name: "Auto", exact: true }).click();
-  await expect(actions.getByRole("button", { name: "Code review", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    actions.getByRole("button", { name: "Code review", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
   await page.getByLabel("Search work").fill(" #1000 ");
   await actions.getByRole("button", { name: "Testing", exact: true }).click();
-  await expect(actions.getByRole("button", { name: "Testing", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    actions.getByRole("button", { name: "Testing", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await actions.getByRole("button", { name: "Fill sprint minimum" }).click();
-  await expect(page.getByLabel("Unit testing estimate hours")).toHaveValue("30");
-  await expect(page.getByLabel("Unit testing completed hours")).toHaveValue("30");
+  await page
+    .getByRole("button", { name: "Edit task: Unit testing", exact: true })
+    .click();
+  await expect(page.getByLabel("Unit testing estimate hours")).toHaveValue(
+    "30",
+  );
+  await expect(page.getByLabel("Unit testing completed hours")).toHaveValue(
+    "30",
+  );
   await expect(page.getByLabel("Unit testing state")).toHaveValue("Active");
   expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Edit task #1000" }),
+  ).toHaveCount(0);
   for (const button of await actions.getByRole("button").all()) {
     const bounds = (await button.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
   }
-  await page.screenshot({ path: testInfo.outputPath("my-work-fill-mobile.png"), fullPage: true });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("my-work-fill-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page.getByRole("status", { name: "How task changes work" }).focus();
   await expect(page.locator(".notice-tooltip").first()).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page.getByRole("button", { name: /Save changes/ }).click();
   await expect(page.getByText("Saved changes to 1 work items.")).toBeVisible();
   const patches = calls.filter((call) => Array.isArray(call.body));
@@ -793,27 +1002,34 @@ test("My Work category actions fit mobile and save only the searched task's hour
   expect(patches[0].url).toMatch(/workitems\/1000\?/i);
   expect(patches[0].body).toEqual([
     { op: "test", path: "/rev", value: 1 },
-    { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: 30 },
-    { op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: 30 },
+    {
+      op: "add",
+      path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+      value: 30,
+    },
+    {
+      op: "add",
+      path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork",
+      value: 30,
+    },
   ]);
 });
 
 test("completed work changes only with status and all-project hour bars preview closures before Save", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
   const { calls } = await azureFixture(page, true, 1, "Active");
-  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await navigate(page, "My work");
   await page.getByLabel("Load project OMS").check();
   await page.getByRole("button", { name: "Load selected projects" }).click();
   await expect(page.getByLabel("Item 11 completed hours")).toHaveValue("2");
   await expect(
     page.getByRole("button", { name: /Save changes/ }),
   ).toBeDisabled();
-  const sprint = page
-    .getByRole("article")
-    .filter({
-      has: page.getByRole("heading", { name: "Current sprint", exact: true }),
-    });
+  const sprint = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Current sprint", exact: true }),
+  });
   await expect(sprint.getByText("Completed: 6h")).toBeVisible();
   await page.getByLabel("Item 11 estimate hours").fill("5");
   await expect(page.getByLabel("Item 11 completed hours")).toHaveValue("2");
@@ -832,3 +1048,240 @@ test("completed work changes only with status and all-project hour bars preview 
     page.getByRole("button", { name: /Save changes/ }),
   ).toBeDisabled();
 });
+test("appearance follows the system and remembers an explicit theme across reloads", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/settings");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(
+    page.getByRole("button", { name: "System", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Light", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(
+    page.getByRole("button", { name: "Light", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("mobile navigation and task panels trap focus, restore it, and preserve staged edits", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { calls } = await azureFixture(page, true, 1, "Active");
+  const menuButton = page.getByRole("button", {
+    name: "Open navigation",
+    exact: true,
+  });
+  await menuButton.click();
+  await expect(
+    page.getByRole("dialog", { name: "Workspace navigation" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menuButton).toBeFocused();
+  await navigate(page, "My work");
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  const edit = page.getByRole("button", {
+    name: "Edit task: Item 11",
+    exact: true,
+  });
+  await edit.click();
+  const panel = page.getByRole("dialog", { name: "Edit task #11" });
+  const close = panel.getByRole("button", { name: "Close task editor" });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    panel.getByRole("button", { name: "Done", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await panel.getByLabel("Item 11 estimate hours").fill("8");
+  await panel
+    .getByLabel("Item 11 state", { exact: true })
+    .selectOption("Closed");
+  await expect(panel.getByLabel("Item 11 completed hours")).toHaveValue("8");
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(edit).toBeFocused();
+  await edit.click();
+  await expect(panel.getByLabel("Item 11 estimate hours")).toHaveValue("8");
+  await expect(panel).toHaveCSS("transform", "none");
+  await panel.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.locator(".modal-panel")).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByLabel("Item 11 estimate hours")).toHaveValue("8");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByLabel("Item 11 estimate hours")).toHaveValue("8");
+  await page.getByRole("button", { name: /Save changes/ }).click();
+  await expect(page.getByText("Saved changes to 1 work items.")).toBeVisible();
+  const writes = calls.filter((call) => Array.isArray(call.body));
+  expect(writes).toHaveLength(1);
+  expect(writes[0].body).toContainEqual({ op: "test", path: "/rev", value: 1 });
+  expect(writes[0].body).toContainEqual({
+    op: "add",
+    path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork",
+    value: 8,
+  });
+});
+
+test("template deletion requires confirmation and cancellation keeps the template", async ({
+  page,
+}) => {
+  const { calls } = await azureFixture(page);
+  await navigate(page, "Task templates");
+  const remove = page.getByRole("button", {
+    name: "Delete template: Frontend feature",
+    exact: true,
+  });
+  await remove.click();
+  const dialog = page.getByRole("dialog", {
+    name: "Delete this task template?",
+  });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(remove).toBeFocused();
+  await remove.click();
+  await dialog
+    .getByRole("button", { name: "Delete template", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "No task templates yet" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.getByLabel("Template name")).toHaveValue("New template");
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 768, 1024, 1440]) {
+    test(`all seven screens fit ${width}px in ${theme} appearance`, async ({
+      page,
+    }, testInfo) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ colorScheme: theme });
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      const { calls } = await azureFixture(page, true, 3, "Active");
+      await page.route(
+        "**/_apis/wit/classificationnodes/iterations?*",
+        async (route) => {
+          const name = route.request().url().includes("project2")
+            ? "Platform"
+            : "OMS";
+          await route.fulfill({
+            json: { id: 1, name, children: [{ id: 2, name: "Sprint 1" }] },
+          });
+        },
+      );
+      for (const screen of [
+        "My work",
+        "Today’s plan",
+        "Create stories",
+        "Move stories",
+        "Story points",
+        "Task templates",
+        "Settings",
+      ]) {
+        await navigate(page, screen);
+        if (screen === "My work") {
+          await page.getByLabel("Load project OMS").check();
+          await page
+            .getByRole("button", { name: "Load selected projects" })
+            .click();
+          await page
+            .getByRole("button", {
+              name: "Add to today: Item 1000",
+              exact: true,
+            })
+            .click();
+        } else if (screen === "Today’s plan") {
+          await expect(
+            page.getByText("1 planned item", { exact: true }),
+          ).toBeVisible();
+        } else if (screen === "Create stories") {
+          await page.getByLabel("Destination project").selectOption("project1");
+          await page.getByLabel("Epic", { exact: true }).selectOption("100");
+          await page
+            .getByLabel("Parent Feature", { exact: true })
+            .selectOption("120");
+          await page
+            .getByLabel("Paste SRS requirements")
+            .fill("SRS.1 Print report\nSRS.2 Search devices");
+          await page
+            .getByRole("button", { name: "Add 2 stories to batch" })
+            .click();
+          const pasteToggle = page.getByRole("button", {
+            name: "Add more requirements",
+            exact: true,
+          });
+          await expect(pasteToggle).toHaveAttribute("aria-expanded", "false");
+          await expect(
+            page.getByRole("button", { name: "Expand story 2", exact: true }),
+          ).toHaveAttribute("aria-expanded", "false");
+          await expect(page.locator(".paste-panel .reveal")).toHaveCSS(
+            "height",
+            "0px",
+          );
+        } else if (screen === "Move stories") {
+          await page
+            .getByLabel("Project to move stories")
+            .selectOption("project1");
+          await expect(
+            page.getByLabel("Select story #10: Item 10"),
+          ).toBeVisible();
+        } else if (screen === "Story points") {
+          await page
+            .getByLabel("Project for story points")
+            .selectOption("project1");
+          await expect(
+            page.getByLabel("Story points for #10", { exact: true }),
+          ).toBeVisible();
+        }
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+        const escapedControls = await page
+          .locator(
+            "main button:visible, main input:visible, main select:visible, main textarea:visible",
+          )
+          .evaluateAll((elements) =>
+            elements
+              .filter((element) => {
+                const bounds = element.getBoundingClientRect();
+                return (
+                  bounds.width > 0 &&
+                  (bounds.left < -1 || bounds.right > innerWidth + 1)
+                );
+              })
+              .map(
+                (element) =>
+                  element.getAttribute("aria-label") || element.textContent,
+              ),
+          );
+        expect(escapedControls).toEqual([]);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `${theme}-${width}-${screen.replaceAll(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`,
+          ),
+          fullPage: true,
+        });
+      }
+      expect(errors).toEqual([]);
+      expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+    });
+  }
+}

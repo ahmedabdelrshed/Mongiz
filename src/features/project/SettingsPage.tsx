@@ -6,6 +6,8 @@ import type { AuthSession } from "../auth/types";
 import { AzureAuth } from "../auth/msal";
 import type { Settings } from "../../shared/api/types";
 import { Notice, PageTitle } from "../../shared/ui/Common";
+import { AppearanceSettings } from "../../app/Appearance";
+import { Disclosure } from "../../shared/ui/Motion";
 export function SettingsPage() {
   const w = useWorkspace();
   const [draft, setDraft] = useState({
@@ -93,6 +95,7 @@ export function SettingsPage() {
         title="Workspace settings"
         subtitle="Connect your Azure DevOps organization to start managing work."
       />
+      <AppearanceSettings />
       <div className="settings-grid">
         <section className="panel">
           <h2>Azure connection</h2>
@@ -184,58 +187,60 @@ export function SettingsPage() {
           {message && <Notice tone="success">{message}</Notice>}
         </section>
         <section className="panel">
-          <h2>Setup checklist</h2>
-          {draft.authMethod === "pat" ? (
-            <ol className="checklist">
-              <li>
-                In Azure DevOps, open User settings → Personal access tokens →
-                New Token.
-              </li>
-              <li>Select your organization and an expiration date.</li>
-              <li>
-                Enable Work Items (Read &amp; write), Project and Team (Read),
-                and Graph (Read) to list all project users.
-              </li>
-              <li>
-                Copy the token, enter your organization name here, then click
-                Connect with token.
-              </li>
-              <li>
-                My Work loads all accessible projects. Choose the destination
-                project in Create Stories; its default team supplies
-                sprint/backlog options. Tenant ID and Client ID are not needed.
-              </li>
-            </ol>
-          ) : (
-            <ol className="checklist">
-              <li>
-                Register a single-page application in your company’s Microsoft
-                Entra tenant.
-              </li>
-              <li>
-                Add this exact redirect URI:{" "}
-                <code>{window.location.origin}</code>
-              </li>
-              <li>
-                Add Azure DevOps delegated permissions. Request tenant admin
-                consent if required.
-              </li>
-              <li>
-                Enter the organization name, tenant ID and app client ID. No
-                client secret is needed.
-              </li>
-              <li>
-                Sign in with your work account. Choose the destination project
-                only when creating stories.
-              </li>
-            </ol>
-          )}
-          <p className="muted">
-            PATs stay in memory and are cleared on disconnect or page reload.
-            Microsoft sessions use sessionStorage managed by MSAL. My Work edit
-            drafts and preferences use localStorage. Creation fields stay in
-            memory and clear when you leave the page or complete a batch.
-          </p>
+          <Disclosure title="Setup checklist" defaultOpen={!w.account}>
+            {draft.authMethod === "pat" ? (
+              <ol className="checklist">
+                <li>
+                  In Azure DevOps, open User settings → Personal access tokens →
+                  New Token.
+                </li>
+                <li>Select your organization and an expiration date.</li>
+                <li>
+                  Enable Work Items (Read &amp; write), Project and Team (Read),
+                  and Graph (Read) to list all project users.
+                </li>
+                <li>
+                  Copy the token, enter your organization name here, then click
+                  Connect with token.
+                </li>
+                <li>
+                  My Work loads all accessible projects. Choose the destination
+                  project in Create Stories; its default team supplies
+                  sprint/backlog options. Tenant ID and Client ID are not
+                  needed.
+                </li>
+              </ol>
+            ) : (
+              <ol className="checklist">
+                <li>
+                  Register a single-page application in your company’s Microsoft
+                  Entra tenant.
+                </li>
+                <li>
+                  Add this exact redirect URI:{" "}
+                  <code>{window.location.origin}</code>
+                </li>
+                <li>
+                  Add Azure DevOps delegated permissions. Request tenant admin
+                  consent if required.
+                </li>
+                <li>
+                  Enter the organization name, tenant ID and app client ID. No
+                  client secret is needed.
+                </li>
+                <li>
+                  Sign in with your work account. Choose the destination project
+                  only when creating stories.
+                </li>
+              </ol>
+            )}
+            <p className="muted">
+              PATs stay in memory and are cleared on disconnect or page reload.
+              Microsoft sessions use sessionStorage managed by MSAL. My Work
+              edit drafts and preferences use localStorage. Creation fields stay
+              in memory and clear when you leave the page or complete a batch.
+            </p>
+          </Disclosure>
           {(w.account || identity) && (
             <button
               onClick={async () => {

@@ -1,6 +1,9 @@
 import * as Popover from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { fade } from "./Motion";
 
 export type MultiSelectOption = {
   value: string;
@@ -26,6 +29,7 @@ export function SearchableMultiSelect({
   /** Allow clearing the last option instead of reverting to allValue. */
   allowEmpty?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const selected = options.filter((option) => value.includes(option.value));
   const selectedLabel = value.includes(allValue)
     ? (options.find((option) => option.value === allValue)?.label ?? "All")
@@ -46,7 +50,7 @@ export function SearchableMultiSelect({
     onChange(toggled.length || allowEmpty ? toggled : [allValue]);
   };
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"
@@ -58,54 +62,64 @@ export function SearchableMultiSelect({
           <ChevronsUpDown size={15} aria-hidden="true" />
         </button>
       </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          className="multi-select-popover"
-          align="start"
-          sideOffset={6}
-          role="dialog"
-          aria-label={`${label} options`}
-        >
-          <Command>
-            <div className="multi-select-search">
-              <Search size={15} aria-hidden="true" />
-              <Command.Input
-                aria-label={`Search ${label}`}
-                placeholder={`Search ${label.toLowerCase()}...`}
-              />
-            </div>
-            <Command.List>
-              {allowEmpty && value.length > 0 && (
-                <Command.Item
-                  value="Clear selection"
-                  onSelect={() => onChange([])}
-                >
-                  Clear selection
-                </Command.Item>
-              )}
-              <Command.Empty>No matching options.</Command.Empty>
-              {options.map((option) => {
-                const checked = value.includes(option.value);
-                return (
-                  <Command.Item
-                    key={option.value}
-                    value={`${option.label} ${option.value}`}
-                    onSelect={() => choose(option.value)}
-                  >
-                    <span
-                      className={`multi-select-check ${checked ? "checked" : ""}`}
-                      aria-hidden="true"
+      {open && (
+        <Popover.Portal forceMount>
+          <Popover.Content
+            forceMount
+            asChild
+            align="start"
+            sideOffset={6}
+            role="dialog"
+            aria-label={`${label} options`}
+          >
+            <motion.div
+              className="multi-select-popover"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={fade}
+            >
+              <Command>
+                <div className="multi-select-search">
+                  <Search size={15} aria-hidden="true" />
+                  <Command.Input
+                    aria-label={`Search ${label}`}
+                    placeholder={`Search ${label.toLowerCase()}...`}
+                  />
+                </div>
+                <Command.List>
+                  {allowEmpty && value.length > 0 && (
+                    <Command.Item
+                      value="Clear selection"
+                      onSelect={() => onChange([])}
                     >
-                      {checked && <Check size={13} />}
-                    </span>
-                    {option.label}
-                  </Command.Item>
-                );
-              })}
-            </Command.List>
-          </Command>
-        </Popover.Content>
-      </Popover.Portal>
+                      Clear selection
+                    </Command.Item>
+                  )}
+                  <Command.Empty>No matching options.</Command.Empty>
+                  {options.map((option) => {
+                    const checked = value.includes(option.value);
+                    return (
+                      <Command.Item
+                        key={option.value}
+                        value={`${option.label} ${option.value}`}
+                        onSelect={() => choose(option.value)}
+                      >
+                        <span
+                          className={`multi-select-check ${checked ? "checked" : ""}`}
+                          aria-hidden="true"
+                        >
+                          {checked && <Check size={13} />}
+                        </span>
+                        {option.label}
+                      </Command.Item>
+                    );
+                  })}
+                </Command.List>
+              </Command>
+            </motion.div>
+          </Popover.Content>
+        </Popover.Portal>
+      )}
     </Popover.Root>
   );
 }

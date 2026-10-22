@@ -159,8 +159,14 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
   await screen.findByLabelText(
     "Implement frontend requirements estimate hours",
   );
+  await user.click(
+    screen.getByRole("button", { name: "Configure sprint minimum" }),
+  );
   const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
   expect(screen.getByText("Sprint minimum: 30h")).toBeInTheDocument();
+  await user.click(
+    screen.getByRole("button", { name: "Hour settings and breakdowns" }),
+  );
   const target = screen.getByLabelText("Sprint target minimum");
   await user.clear(target);
   await user.type(target, "12");
@@ -246,6 +252,9 @@ it("selects implementation and review together, toggles categories, and restores
   const update = vi.spyOn(demoRepository, "update");
   const user = userEvent.setup();
   setup();
+  await user.click(
+    await screen.findByRole("button", { name: "Configure sprint minimum" }),
+  );
   const implementation = await screen.findByRole("button", {
     name: "Implementation",
   });
@@ -287,6 +296,9 @@ it("fills a searched testing task alone and rejects cleared hour drafts before s
   setup();
   const search = await screen.findByLabelText("Search work");
   await user.type(search, "unit testing");
+  await user.click(
+    screen.getByRole("button", { name: "Configure sprint minimum" }),
+  );
   const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
   await user.click(screen.getByRole("button", { name: "Testing" }));
   expect(screen.getByRole("button", { name: "Testing" })).toHaveAttribute(
@@ -321,6 +333,12 @@ async function chooseFilter(
   label: string,
   option: string,
 ) {
+  if (label.startsWith("Calculation")) {
+    const details = screen.queryByRole("button", {
+      name: "Hour settings and breakdowns",
+    });
+    if (details) await user.click(details);
+  }
   await user.click(screen.getByRole("button", { name: label }));
   const menu = await screen.findByRole("dialog", {
     name: `${label} options`,
@@ -588,6 +606,9 @@ it("shows incremental progress and keeps loaded work editable", async () => {
   expect(screen.getByLabelText("Current project items progress")).toHaveValue(
     2,
   );
+  await user.click(
+    screen.getByRole("button", { name: "Configure sprint minimum" }),
+  );
   expect(
     screen.getByRole("button", { name: "Fill sprint minimum" }),
   ).toBeDisabled();
@@ -650,6 +671,9 @@ it("keeps partial rows visible when a work load fails", async () => {
   reject(new Error("Platform: work-item loading failed."));
   await screen.findByText("Platform: work-item loading failed.");
   expect(screen.getByRole("button", { name: "Export Excel" })).toBeDisabled();
+  await user.click(
+    screen.getByRole("button", { name: "Configure sprint minimum" }),
+  );
   expect(
     screen.getByRole("button", { name: "Fill sprint minimum" }),
   ).toBeDisabled();

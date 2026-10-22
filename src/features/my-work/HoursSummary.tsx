@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Iteration, WorkItem } from "../../shared/api/types";
 import {
   hourTotals,
@@ -10,6 +10,8 @@ import {
   itemsInSprints,
 } from "./filters";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
+import { motion, useReducedMotion } from "framer-motion";
+import { Disclosure, Reveal } from "../../shared/ui/Motion";
 export function HoursSummary({
   items,
   iterations,
@@ -17,9 +19,11 @@ export function HoursSummary({
   setTarget,
   owner,
   people,
+  actions,
 }: {
   items: WorkItem[];
   iterations: Iteration[];
+  actions?: import("react").ReactNode;
   owner: string;
   people: import("../../shared/api/types").Person[];
   target: SprintTarget;
@@ -27,6 +31,8 @@ export function HoursSummary({
 }) {
   const [today, setToday] = useState(() => new Date());
   const [showMonths, setShowMonths] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const updateDay = () => {
@@ -151,105 +157,15 @@ export function HoursSummary({
       className="hours-summary hours-summary-compact"
       aria-label="Sprint and month hours"
     >
-      <h2>Hour calculations</h2>
-      <div className="toolbar">
-        <select
-          aria-label="Calculation user"
-          value={user}
-          onChange={(e) => setUser(e.target.value)}
-        >
-          <option value="mine">My hours ({owner})</option>
-          <option value="all">All users</option>
-          {users
-            .filter((u) => u !== owner)
-            .map((u) => (
-              <option key={u} value={u}>
-                {people.find((p) => p.identity === u)?.name ?? u}
-              </option>
-            ))}
-        </select>
-        <SearchableMultiSelect
-          label="Calculation projects"
-          options={[
-            { value: "all", label: "All accessible projects" },
-            ...projectNames.map((project) => ({
-              value: project,
-              label: project,
-            })),
-          ]}
-          value={selectedProjects}
-          allValue="all"
-          onChange={(value) => {
-            setSelectedProjects(value);
-            setSelectedSprints(["current"]);
-            setSelectedMonths(["current"]);
-          }}
-        />
-        <SearchableMultiSelect
-          label="Calculation sprints"
-          options={[
-            { value: "all", label: "All available sprints" },
-            { value: "current", label: "Current sprints" },
-            ...availableSprints.map((iteration) => ({
-              value: iteration.path,
-              label: titleFor(iteration),
-            })),
-          ]}
-          value={selectedSprints}
-          allValue="all"
-          onChange={setSelectedSprints}
-        />
-        <SearchableMultiSelect
-          label="Calculation months"
-          options={[
-            { value: "all", label: "All available months" },
-            { value: "current", label: "Current month" },
-            ...availableMonths.map((month) => ({
-              value: month,
-              label: monthTitle(month),
-            })),
-          ]}
-          value={selectedMonths}
-          allValue="all"
-          onChange={(value) => {
-            setSelectedMonths(value);
-            setShowMonths(true);
-          }}
-        />
+      <div className="hours-heading">
+        <h2>Hour calculations</h2>
+        <span className="muted">
+          {selectedProjects.includes("all")
+            ? "All accessible projects"
+            : "Selected projects"}{" "}
+          · Includes staged edits
+        </span>
       </div>
-      <div className="hours-settings">
-        <strong>Capacity target per sprint</strong>
-        <label>
-          Minimum hours
-          <input
-            aria-label="Sprint target minimum"
-            type="number"
-            step="0.01"
-            min="0"
-            max={target.max}
-            value={minimum}
-            onChange={(e) => updateTarget("min", e.target.value)}
-          />
-        </label>
-        <label>
-          Maximum hours
-          <input
-            aria-label="Sprint target maximum"
-            type="number"
-            step="0.01"
-            min={target.min}
-            max="10000"
-            value={maximum}
-            onChange={(e) => updateTarget("max", e.target.value)}
-          />
-        </label>
-      </div>
-      {invalid && (
-        <p role="alert">
-          Enter a valid target from 0 to 10,000 hours with minimum no greater
-          than maximum. Bars use the last valid target.
-        </p>
-      )}
       <div className="hours-cards hours-current">
         <HourBar
           title={currentOnly ? "Current sprint" : "Selected sprints"}
@@ -263,77 +179,187 @@ export function HoursSummary({
           }
         />
       </div>
-      <p className="muted">
-        {currentOnly
-          ? `Sprints containing today (${dateLabel})`
-          : "Selected sprints"}
-        : {selected.length}.{" "}
-        {selectedProjects.includes("all")
-          ? "Across all accessible projects"
-          : "Across selected projects"}
-        . The capacity target applies once to the combined total.
-      </p>
-      {itemsByProject.size > 0 && (
-        <section aria-label="Hours by project">
-          <h3>By project</h3>
-          <div className="hours-cards">
-            {[...itemsByProject]
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([name, projectItems]) => (
-                <HourBar
-                  key={name}
-                  title={name}
-                  items={projectItems}
-                  target={bounds(1)}
-                  available
-                  unavailable=""
-                  breakdown
-                />
-              ))}
-          </div>
-        </section>
-      )}
-      <details
-        open={showMonths}
-        onToggle={(event) => setShowMonths(event.currentTarget.open)}
+      <button
+        className="hours-details-toggle"
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={() => setExpanded(!expanded)}
       >
-        <summary>Month totals</summary>
-        <div className="hours-cards">
-          {selectedMonthValues.length ? (
-            selectedMonthValues.map((month) => {
-              const monthIterations = iterationsForMonth(month);
-              return (
-                <HourBar
-                  key={month}
-                  title={`Month · ${monthTitle(month)}`}
-                  items={itemsInSprints(calculationItems, monthIterations)}
-                  // A month represents four sprint-capacity periods.
-                  target={bounds(4)}
-                  available={!!monthIterations.length}
-                  unavailable="No configured sprints start in this month."
-                />
-              );
-            })
-          ) : (
-            <HourBar
-              title="Months"
-              items={[]}
-              target={bounds(1)}
-              available={false}
-              unavailable="No months are available from the selected projects."
-            />
-          )}
+        {expanded ? "Hide hour settings" : "Hour settings and breakdowns"}
+      </button>
+      <Reveal open={expanded} id={detailsId}>
+        <p className="muted hours-context">
+          {currentOnly
+            ? `Sprints containing today (${dateLabel})`
+            : "Selected sprints"}
+          : {selected.length}.{" "}
+          {selectedProjects.includes("all")
+            ? "Across all accessible projects"
+            : "Across selected projects"}
+          . The capacity target applies once to the combined total.
+        </p>
+        <div className="toolbar">
+          <select
+            aria-label="Calculation user"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+          >
+            <option value="mine">My hours ({owner})</option>
+            <option value="all">All users</option>
+            {users
+              .filter((u) => u !== owner)
+              .map((u) => (
+                <option key={u} value={u}>
+                  {people.find((p) => p.identity === u)?.name ?? u}
+                </option>
+              ))}
+          </select>
+          <SearchableMultiSelect
+            label="Calculation projects"
+            options={[
+              { value: "all", label: "All accessible projects" },
+              ...projectNames.map((project) => ({
+                value: project,
+                label: project,
+              })),
+            ]}
+            value={selectedProjects}
+            allValue="all"
+            onChange={(value) => {
+              setSelectedProjects(value);
+              setSelectedSprints(["current"]);
+              setSelectedMonths(["current"]);
+            }}
+          />
+          <SearchableMultiSelect
+            label="Calculation sprints"
+            options={[
+              { value: "all", label: "All available sprints" },
+              { value: "current", label: "Current sprints" },
+              ...availableSprints.map((iteration) => ({
+                value: iteration.path,
+                label: titleFor(iteration),
+              })),
+            ]}
+            value={selectedSprints}
+            allValue="all"
+            onChange={setSelectedSprints}
+          />
+          <SearchableMultiSelect
+            label="Calculation months"
+            options={[
+              { value: "all", label: "All available months" },
+              { value: "current", label: "Current month" },
+              ...availableMonths.map((month) => ({
+                value: month,
+                label: monthTitle(month),
+              })),
+            ]}
+            value={selectedMonths}
+            allValue="all"
+            onChange={(value) => {
+              setSelectedMonths(value);
+              setShowMonths(true);
+            }}
+          />
         </div>
-      </details>
-      <p className="muted">
-        Totals include pending local task edits across all accessible projects.
-        Local closures update completed hours immediately. User and sprint
-        controls are independent of the list filters. Save writes changes to
-        Azure; Discard restores saved values. Current sprint totals include only
-        sprints whose start and finish dates contain today, including both
-        boundary days. Month totals separately include whole sprints starting in
-        each selected month.
-      </p>
+        <div className="hours-settings">
+          <strong>Capacity target per sprint</strong>
+          <label>
+            Minimum hours
+            <input
+              aria-label="Sprint target minimum"
+              type="number"
+              step="0.01"
+              min="0"
+              max={target.max}
+              value={minimum}
+              onChange={(e) => updateTarget("min", e.target.value)}
+            />
+          </label>
+          <label>
+            Maximum hours
+            <input
+              aria-label="Sprint target maximum"
+              type="number"
+              step="0.01"
+              min={target.min}
+              max="10000"
+              value={maximum}
+              onChange={(e) => updateTarget("max", e.target.value)}
+            />
+          </label>
+        </div>
+        {invalid && (
+          <p role="alert">
+            Enter a valid target from 0 to 10,000 hours with minimum no greater
+            than maximum. Bars use the last valid target.
+          </p>
+        )}
+        {itemsByProject.size > 0 && (
+          <section aria-label="Hours by project">
+            <h3>By project</h3>
+            <div className="hours-cards">
+              {[...itemsByProject]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, projectItems]) => (
+                  <HourBar
+                    key={name}
+                    title={name}
+                    items={projectItems}
+                    target={bounds(1)}
+                    available
+                    unavailable=""
+                    breakdown
+                  />
+                ))}
+            </div>
+          </section>
+        )}
+        <Disclosure
+          title="Month totals"
+          open={showMonths}
+          onOpenChange={setShowMonths}
+        >
+          <div className="hours-cards">
+            {selectedMonthValues.length ? (
+              selectedMonthValues.map((month) => {
+                const monthIterations = iterationsForMonth(month);
+                return (
+                  <HourBar
+                    key={month}
+                    title={`Month · ${monthTitle(month)}`}
+                    items={itemsInSprints(calculationItems, monthIterations)}
+                    // A month represents four sprint-capacity periods.
+                    target={bounds(4)}
+                    available={!!monthIterations.length}
+                    unavailable="No configured sprints start in this month."
+                  />
+                );
+              })
+            ) : (
+              <HourBar
+                title="Months"
+                items={[]}
+                target={bounds(1)}
+                available={false}
+                unavailable="No months are available from the selected projects."
+              />
+            )}
+          </div>
+        </Disclosure>
+        <p className="muted">
+          Totals include pending local task edits across all accessible
+          projects. Local closures update completed hours immediately. User and
+          sprint controls are independent of the list filters. Save writes
+          changes to Azure; Discard restores saved values. Current sprint totals
+          include only sprints whose start and finish dates contain today,
+          including both boundary days. Month totals separately include whole
+          sprints starting in each selected month.
+        </p>
+        {actions}
+      </Reveal>
     </section>
   );
 }
@@ -352,6 +378,7 @@ function HourBar({
   unavailable: string;
   breakdown?: boolean;
 }) {
+  const reduced = useReducedMotion();
   const totals = hourTotals(items);
   const status =
     totals.estimate > target.max
@@ -381,8 +408,10 @@ function HourBar({
             aria-valuemax={Math.max(target.max, 1)}
             aria-valuenow={Math.min(totals.estimate, Math.max(target.max, 1))}
           >
-            <span
-              style={{
+            <motion.span
+              initial={false}
+              transition={{ duration: reduced ? 0 : 0.2 }}
+              animate={{
                 width: `${target.max ? Math.min(100, (totals.estimate / target.max) * 100) : 0}%`,
               }}
             />
@@ -395,8 +424,10 @@ function HourBar({
             aria-valuemax={Math.max(target.max, 1)}
             aria-valuenow={Math.min(totals.completed, Math.max(target.max, 1))}
           >
-            <span
-              style={{
+            <motion.span
+              initial={false}
+              transition={{ duration: reduced ? 0 : 0.2 }}
+              animate={{
                 width: `${target.max ? Math.min(100, (totals.completed / target.max) * 100) : 0}%`,
               }}
             />

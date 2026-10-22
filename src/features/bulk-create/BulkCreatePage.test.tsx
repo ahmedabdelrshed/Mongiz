@@ -25,7 +25,7 @@ it("pastes multiple stories, creates a batch, and clears all fields without pers
   await screen.findByRole("option", { name: "OMS" });
   expect(
     screen.queryByRole("heading", { name: "Create stories" }),
-  ).not.toBeInTheDocument();
+  ).toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Shared settings" }),
   ).not.toBeInTheDocument();
@@ -112,7 +112,7 @@ it("waits for project workspace loading before showing any creation controls", a
   await user.selectOptions(screen.getByLabelText("Destination project"), "");
   expect(
     screen.queryByRole("heading", { name: "Create stories" }),
-  ).not.toBeInTheDocument();
+  ).toBeInTheDocument();
   expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
 });
 it("clears legacy creation storage and never restores the creation form on reopening", async () => {
@@ -181,6 +181,9 @@ it("shared task titles update existing and later stories while preserving indivi
   );
   expect(screen.getByLabelText("Story 2 task 1 title")).toHaveValue(
     "Implement frontend screens",
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Add more requirements" }),
   );
   await user.type(paste, "SRS.3 Third story");
   await user.click(

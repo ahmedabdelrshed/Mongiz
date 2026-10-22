@@ -45,13 +45,19 @@ export function HoursPanel({
         setTarget={setTarget}
         owner={w.settings.mode === "demo" ? "ahmed@example.com" : w.account}
         people={w.hoursMeta.people}
+        actions={
+          <>
+            <button disabled={w.hours.isFetching} onClick={w.refreshHours}>
+              {w.hours.isFetching
+                ? "Refreshing hours…"
+                : "Refresh all-project hours"}
+            </button>
+            {w.hoursMeta.warnings.map((warning, index) => (
+              <Notice key={index}>Hour calculation metadata: {warning}</Notice>
+            ))}
+          </>
+        }
       />
-      <button disabled={w.hours.isFetching} onClick={w.refreshHours}>
-        {w.hours.isFetching ? "Refreshing hours…" : "Refresh all-project hours"}
-      </button>
-      {w.hoursMeta.warnings.map((warning, index) => (
-        <Notice key={index}>Hour calculation metadata: {warning}</Notice>
-      ))}
     </>
   );
 }

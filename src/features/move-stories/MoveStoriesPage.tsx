@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { fade } from "../../shared/ui/Motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ArrowRightLeft, RefreshCw } from "lucide-react";
@@ -34,7 +36,7 @@ function ProjectPage() {
         title="Move stories"
         subtitle="Move project stories between iterations and choose which task statuses to include."
       />
-      <section className="move-panel">
+      <section className="move-panel project-scope">
         <label>
           Project
           <select
@@ -371,6 +373,15 @@ function ProjectStories({
   const hasChanges = candidate && changedItems(candidate).length > 0;
   return (
     <div className="move-stories">
+      <div className="workflow-steps" aria-label="Move workflow">
+        <span className={!review && !results.length ? "current" : ""}>
+          1 · Select stories
+        </span>
+        <span aria-hidden="true">›</span>
+        <span className={review ? "current" : ""}>2 · Review changes</span>
+        <span aria-hidden="true">›</span>
+        <span className={results.length ? "current" : ""}>3 · Results</span>
+      </div>
       <div className="move-toolbar">
         <h2>{project.name} stories</h2>
         <button disabled={busy || !!loading} onClick={() => void refresh()}>
@@ -555,7 +566,13 @@ function ProjectStories({
         </>
       )}
       {review && (
-        <section className="move-panel move-review" aria-label="Review move">
+        <motion.section
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={fade}
+          className="move-panel move-review"
+          aria-label="Review move"
+        >
           <h2 tabIndex={-1} ref={reviewHeading}>
             Review {review.retry ? "unfinished changes" : "move"}
           </h2>
@@ -616,7 +633,7 @@ function ProjectStories({
               Move
             </button>
           </div>
-        </section>
+        </motion.section>
       )}
       {busy && progress.total > 0 && (
         <div role="status" aria-live="polite">
@@ -629,7 +646,10 @@ function ProjectStories({
         </div>
       )}
       {!!results.length && (
-        <section
+        <motion.section
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={fade}
           className="move-panel"
           aria-label="Move results"
           aria-live="polite"
@@ -659,7 +679,7 @@ function ProjectStories({
               Retry failed
             </button>
           )}
-        </section>
+        </motion.section>
       )}
     </div>
   );

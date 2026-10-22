@@ -1,5 +1,7 @@
 import { ChevronDown, Copy, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { Reveal, fade } from "../../shared/ui/Motion";
 import type { Person } from "../../shared/api/types";
 import {
   copyTasks,
@@ -42,15 +44,21 @@ export function StoryEditor({
   onRemove: () => void;
   firstTasks: StoryDraft["tasks"];
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(index === 0);
   const result = results[story.id];
   return (
-    <section className="story-card">
+    <motion.section
+      className="story-card"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={fade}
+    >
       <header className="story-head">
         <button
           type="button"
           className="icon"
           aria-label={`${expanded ? "Collapse" : "Expand"} story ${index + 1}`}
+          aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
           <ChevronDown
@@ -91,7 +99,7 @@ export function StoryEditor({
         )}
       </div>
       {result?.message && <p className="result-message">{result.message}</p>}
-      {expanded && (
+      <Reveal open={expanded}>
         <div className="story-body">
           <label>
             Story points
@@ -317,7 +325,7 @@ export function StoryEditor({
             )}
           </div>
         </div>
-      )}
-    </section>
+      </Reveal>
+    </motion.section>
   );
 }
