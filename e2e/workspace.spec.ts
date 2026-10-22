@@ -665,6 +665,45 @@ test("Azure SRS creation submits stories and default tasks then clears the form"
   ).toBe(true);
 });
 
+test("Hour calculations combine all projects only for sprint dates containing today", async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date("2026-05-12T12:00:00Z"));
+  const { calls } = await azureFixture(page, true, 3);
+  await page.route("**/teamsettings/iterations?*", async (route) => {
+    const other = route.request().url().includes("project2");
+    const project = other ? "Platform" : "OMS";
+    await route.fulfill({ json: { value: [{ id: project, name: "Sprint 1", path: `${project}\\Sprint 1`,
+      attributes: { timeFrame: "future", startDate: other ? "2026-05-11" : "2026-05-04", finishDate: other ? "2026-05-15" : "2026-05-17" },
+    }] } });
+  });
+  await page.getByRole("link", { name: "My work", exact: true }).click();
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  const summary = page.getByRole("region", { name: "Sprint and month hours" });
+  const current = summary.getByRole("article").filter({ has: page.getByRole("heading", { name: "Current sprint", exact: true }) });
+  await expect(current.getByText("Estimated: 16h")).toBeVisible();
+  await expect(current.getByText("Completed: 10h")).toBeVisible();
+  await expect(summary.getByRole("article", { name: "OMS", exact: true }).getByText("Estimated: 9h")).toBeVisible();
+  await expect(summary.getByRole("article", { name: "Platform", exact: true }).getByText("Estimated: 7h")).toBeVisible();
+  await expect(summary.getByText(/Sprints containing today \(12\/05\/2026\): 2/)).toBeVisible();
+  await expect(summary.locator("details")).not.toHaveAttribute("open");
+  await page.getByLabel("Search work").fill(" #1000 ");
+  await expect(current.getByText("Estimated: 16h")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("hours-current-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await summary.scrollIntoViewIfNeeded();
+  await expect(current.getByText("Estimated: 16h")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("hours-current-mobile.png"), fullPage: true });
+  await page.clock.setFixedTime(new Date("2026-05-16T12:00:00Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(current.getByText("Estimated: 9h")).toBeVisible();
+  await expect(summary.getByRole("article", { name: "Platform", exact: true })).toHaveCount(0);
+  await page.clock.setFixedTime(new Date("2026-05-18T12:00:00Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(current.getByText(/No sprint date range contains 18\/05\/2026/)).toBeVisible();
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+});
+
 test("My Work search resets a scrolled list and fills every filtered task including offscreen rows", async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
   const { calls } = await azureFixture(page, true, 80, "Closed", (id) => `Implement frontend ${id}`);

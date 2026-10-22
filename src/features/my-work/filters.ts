@@ -40,6 +40,22 @@ export function sprintMatches(
 export function uniqueSprints(iterations: Iteration[]) {
   return [...new Map(iterations.map((i) => [i.path, i])).values()];
 }
+// Hour totals require an actual date range; a cached Azure current flag alone
+// cannot establish whether the sprint contains the user's current work day.
+export function iterationContainsDay(iteration: Iteration, day: Date) {
+  return isIterationCurrent({ ...iteration, current: false }, day);
+}
+export function itemsInSprints(items: WorkItem[], iterations: Iteration[]) {
+  return items.filter((item) =>
+    iterations.some(
+      (iteration) =>
+        item.iteration === iteration.path &&
+        (!item.project ||
+          !iteration.project ||
+          item.project === iteration.project),
+    ),
+  );
+}
 export function hourTotals(items: WorkItem[]) {
   const sum = (key: "estimate" | "completed") =>
     Math.round(

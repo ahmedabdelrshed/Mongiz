@@ -1,15 +1,13 @@
-import { useState } from "react";
-import {
-  isIterationCurrent,
-  type Iteration,
-  type WorkItem,
-} from "../../shared/api/types";
+import { useEffect, useState } from "react";
+import type { Iteration, WorkItem } from "../../shared/api/types";
 import {
   hourTotals,
   uniqueSprints,
   owns,
   isSprintTarget,
   type SprintTarget,
+  iterationContainsDay,
+  itemsInSprints,
 } from "./filters";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 export function HoursSummary({
@@ -27,6 +25,25 @@ export function HoursSummary({
   target: SprintTarget;
   setTarget: (target: SprintTarget) => void;
 }) {
+  const [today, setToday] = useState(() => new Date());
+  const [showMonths, setShowMonths] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const updateDay = () => {
+      const now = new Date();
+      setToday(now);
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      clearTimeout(timer);
+      timer = setTimeout(updateDay, midnight.getTime() - now.getTime() + 20);
+    };
+    updateDay();
+    window.addEventListener("focus", updateDay);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", updateDay);
+    };
+  }, []);
   const [selectedSprints, setSelectedSprints] = useState(["current"]);
   const [selectedMonths, setSelectedMonths] = useState(["current"]);
   const [user, setUser] = useState("mine");
@@ -75,10 +92,25 @@ export function HoursSummary({
   const selected = availableSprints.filter(
     (iteration) =>
       selectedSprints.includes("all") ||
-      (selectedSprints.includes("current") && isIterationCurrent(iteration)) ||
+      (selectedSprints.includes("current") &&
+        iterationContainsDay(iteration, today)) ||
       selectedSprints.includes(iteration.path),
   );
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentOnly =
+    selectedSprints.length === 1 && selectedSprints[0] === "current";
+  const selectedItems = itemsInSprints(calculationItems, selected);
+  const itemsByProject = new Map<string, WorkItem[]>();
+  for (const iteration of selected) {
+    if (iteration.project) itemsByProject.set(iteration.project, []);
+  }
+  for (const item of selectedItems) {
+    const name = projectFor(item) ?? "Unknown project";
+    const projectItems = itemsByProject.get(name) ?? [];
+    projectItems.push(item);
+    itemsByProject.set(name, projectItems);
+  }
+  const dateLabel = today.toLocaleDateString("en-GB");
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   const availableMonths = [
     ...new Set(
       availableSprints.flatMap((iteration) =>
@@ -179,7 +211,10 @@ export function HoursSummary({
           ]}
           value={selectedMonths}
           allValue="all"
-          onChange={setSelectedMonths}
+          onChange={(value) => {
+            setSelectedMonths(value);
+            setShowMonths(true);
+          }}
         />
       </div>
       <div className="hours-settings">
@@ -215,65 +250,89 @@ export function HoursSummary({
           than maximum. Bars use the last valid target.
         </p>
       )}
-      <div className="hours-cards">
-        {selected.length ? (
-          selected.map((iteration) => (
-            <HourBar
-              key={iteration.path}
-              title={titleFor(iteration)}
-              items={calculationItems.filter(
-                (item) => item.iteration === iteration.path,
-              )}
-              // Capacity is configured per person and sprint, not per project.
-              target={bounds(1)}
-              available
-              unavailable=""
-            />
-          ))
-        ) : (
-          <HourBar
-            title="Sprints"
-            items={[]}
-            target={bounds(1)}
-            available={false}
-            unavailable="Choose a sprint with metadata to calculate hours."
-          />
-        )}
-        {selectedMonthValues.length ? (
-          selectedMonthValues.map((month) => {
-            const monthIterations = iterationsForMonth(month);
-            return (
-              <HourBar
-                key={month}
-                title={`Month · ${monthTitle(month)}`}
-                items={calculationItems.filter((item) =>
-                  monthIterations.some(
-                    (iteration) => iteration.path === item.iteration,
-                  ),
-                )}
-                // A month represents four sprint-capacity periods.
-                target={bounds(4)}
-                available={!!monthIterations.length}
-                unavailable="No configured sprints start in this month."
-              />
-            );
-          })
-        ) : (
-          <HourBar
-            title="Months"
-            items={[]}
-            target={bounds(1)}
-            available={false}
-            unavailable="No months are available from the selected projects."
-          />
-        )}
+      <div className="hours-cards hours-current">
+        <HourBar
+          title={currentOnly ? "Current sprint" : "Selected sprints"}
+          items={selectedItems}
+          target={bounds(1)}
+          available={!!selected.length}
+          unavailable={
+            currentOnly
+              ? `No sprint date range contains ${dateLabel}. Configure sprint start and finish dates.`
+              : "Choose a sprint with metadata to calculate hours."
+          }
+        />
       </div>
+      <p className="muted">
+        {currentOnly
+          ? `Sprints containing today (${dateLabel})`
+          : "Selected sprints"}
+        : {selected.length}.{" "}
+        {selectedProjects.includes("all")
+          ? "Across all accessible projects"
+          : "Across selected projects"}
+        . The capacity target applies once to the combined total.
+      </p>
+      {itemsByProject.size > 0 && (
+        <section aria-label="Hours by project">
+          <h3>By project</h3>
+          <div className="hours-cards">
+            {[...itemsByProject]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([name, projectItems]) => (
+                <HourBar
+                  key={name}
+                  title={name}
+                  items={projectItems}
+                  target={bounds(1)}
+                  available
+                  unavailable=""
+                  breakdown
+                />
+              ))}
+          </div>
+        </section>
+      )}
+      <details
+        open={showMonths}
+        onToggle={(event) => setShowMonths(event.currentTarget.open)}
+      >
+        <summary>Month totals</summary>
+        <div className="hours-cards">
+          {selectedMonthValues.length ? (
+            selectedMonthValues.map((month) => {
+              const monthIterations = iterationsForMonth(month);
+              return (
+                <HourBar
+                  key={month}
+                  title={`Month · ${monthTitle(month)}`}
+                  items={itemsInSprints(calculationItems, monthIterations)}
+                  // A month represents four sprint-capacity periods.
+                  target={bounds(4)}
+                  available={!!monthIterations.length}
+                  unavailable="No configured sprints start in this month."
+                />
+              );
+            })
+          ) : (
+            <HourBar
+              title="Months"
+              items={[]}
+              target={bounds(1)}
+              available={false}
+              unavailable="No months are available from the selected projects."
+            />
+          )}
+        </div>
+      </details>
       <p className="muted">
         Totals include pending local task edits across all accessible projects.
         Local closures update completed hours immediately. User and sprint
         controls are independent of the list filters. Save writes changes to
-        Azure; Discard restores saved values. Month totals include whole sprints
-        starting in each selected month.
+        Azure; Discard restores saved values. Current sprint totals include only
+        sprints whose start and finish dates contain today, including both
+        boundary days. Month totals separately include whole sprints starting in
+        each selected month.
       </p>
     </section>
   );
@@ -284,12 +343,14 @@ function HourBar({
   target,
   available,
   unavailable,
+  breakdown = false,
 }: {
   title: string;
   items: WorkItem[];
   target: { min: number; max: number };
   available: boolean;
   unavailable: string;
+  breakdown?: boolean;
 }) {
   const totals = hourTotals(items);
   const status =
@@ -299,7 +360,7 @@ function HourBar({
         ? "Below target"
         : "Within target";
   return (
-    <article className="hour-card">
+    <article className="hour-card" aria-label={title}>
       <h3>{title}</h3>
       {available ? (
         <>
@@ -308,7 +369,9 @@ function HourBar({
             <strong>Completed: {totals.completed}h</strong>
           </div>
           <p>
-            Target: {target.min}–{target.max}h · {status}
+            {breakdown
+              ? `Combined capacity: ${target.min}–${target.max}h`
+              : `Target: ${target.min}–${target.max}h · ${status}`}
           </p>
           <div
             className="hour-bar"

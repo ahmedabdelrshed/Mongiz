@@ -473,7 +473,10 @@ it("defaults to token owner/current sprint and changes user/sprint filters with 
   expect(
     screen.queryByLabelText("Next sprint task state"),
   ).not.toBeInTheDocument();
-  expect(screen.getByText("Estimated: 7h")).toBeInTheDocument();
+  const hourTotal = within(
+    screen.getByRole("article", { name: "Current sprint" }),
+  );
+  expect(hourTotal.getByText("Estimated: 7h")).toBeInTheDocument();
   expect(screen.getByText("Estimated: 17h")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Filter user" }));
   const userMenu = screen.getByRole("dialog", {
@@ -495,10 +498,10 @@ it("defaults to token owner/current sprint and changes user/sprint filters with 
   expect(
     screen.queryByLabelText("Build search form state"),
   ).not.toBeInTheDocument();
-  expect(screen.getByText("Estimated: 7h")).toBeInTheDocument();
+  expect(hourTotal.getByText("Estimated: 7h")).toBeInTheDocument();
   await chooseFilter(user, "Calculation sprints", "Current sprints");
   await chooseFilter(user, "Calculation sprints", "OMS · Sprint 13");
-  expect(screen.getByText("Estimated: 10h")).toBeInTheDocument();
+  expect(hourTotal.getByText("Estimated: 10h")).toBeInTheDocument();
   expect(screen.getByLabelText("Filter destination")).toHaveTextContent(
     "OMS\\Sprint 13",
   );

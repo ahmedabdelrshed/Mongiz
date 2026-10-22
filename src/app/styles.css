@@ -1517,6 +1517,9 @@ a {
   background: white;
   box-shadow: var(--shadow-sm);
 }
+.hours-current {
+  grid-template-columns: minmax(0, 1fr);
+}
 .hour-card h3 {
   margin-top: 0;
 }
