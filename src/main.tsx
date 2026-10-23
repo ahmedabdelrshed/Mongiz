@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WorkspaceProvider } from "./app/Workspace";
 import { App } from "./app/App";
 import { AppearanceProvider } from "./app/Appearance";
+import { StartupSplash } from "./app/StartupSplash";
 import { MotionConfig } from "framer-motion";
 import "./app/styles.css";
 const client = new QueryClient({
@@ -16,13 +17,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppearanceProvider>
       <MotionConfig reducedMotion="user">
-        <QueryClientProvider client={client}>
-          <BrowserRouter>
-            <WorkspaceProvider>
-              <App />
-            </WorkspaceProvider>
-          </BrowserRouter>
-        </QueryClientProvider>
+        <StartupSplash>
+          <QueryClientProvider client={client}>
+            <BrowserRouter>
+              <WorkspaceProvider>
+                <App />
+              </WorkspaceProvider>
+            </BrowserRouter>
+          </QueryClientProvider>
+        </StartupSplash>
       </MotionConfig>
     </AppearanceProvider>
   </React.StrictMode>,

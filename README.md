@@ -52,6 +52,8 @@ Mongiz uses an **M + completion check** icon: the initial stands for Mongiz, and
 
 Previews: [icon](docs/mongiz-icon-preview.png), [light loading](docs/mongiz-loading-light-preview.png), [dark loading](docs/mongiz-loading-dark-preview.png), and [mobile loading](docs/mongiz-loading-mobile-preview.png).
 
+On opening or reloading, a centered Mongiz icon and wordmark appear for **500 milliseconds** before the workspace mounts. The startup screen follows your appearance and reduced-motion preferences and does not repeat during in-app navigation. Change `STARTUP_SPLASH_MS` in `src/app/StartupSplash.tsx` to adjust the duration.
+
 The desktop sidebar groups daily work and workspace tools. Below 1024px, use the menu button in the header to open navigation. Task fields remain inline on desktop; on smaller screens, **Edit** opens a labeled task panel. **Done** closes the panel and keeps staged edits; **Save changes** in the bottom bar writes them to Azure. Short work lists fit their contents while large lists remain virtualized.
 
 My Work shows compact sprint totals. Open **Hour settings and breakdowns** for calculation filters, capacity targets, project/month totals, and hour refresh. **Fill sprint minimum** opens the separate list allocation controls. Changing list projects or filters preserves the independent hour settings.

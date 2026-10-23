@@ -569,6 +569,48 @@ test("switches list projects with pending edits while hours total all accessible
   ).toBe(true);
 });
 
+test("startup icon appears for 500ms on opening and reloading, with theme and reduced-motion support", async ({
+  page,
+}) => {
+  const start = new Date("2026-10-07T12:00:00Z");
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 1000));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.goto("/settings");
+  const splash = page.getByRole("status", { name: "Opening Mongiz" });
+  await expect(splash).toBeVisible();
+  await expect(page.getByLabel(/^Personal access token/)).toHaveCount(0);
+  await expect(page.locator(".startup-mark .mongiz-check")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
+  await expect(page.locator(".startup-mark .mongiz-check")).toHaveCSS(
+    "stroke-dashoffset",
+    "0px",
+  );
+  await page.screenshot({ path: "docs/mongiz-startup-light-preview.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "docs/mongiz-startup-mobile-preview.png" });
+  await page.clock.runFor(499);
+  await expect(splash).toBeVisible();
+  await page.clock.runFor(1);
+  await expect(splash).toHaveCount(0);
+  await expect(page.getByLabel(/^Personal access token/)).toBeVisible();
+  await page.reload();
+  await expect(splash).toBeVisible();
+  await page.clock.runFor(500);
+  await expect(splash).toHaveCount(0);
+  await expect(page.getByLabel(/^Personal access token/)).toBeVisible();
+});
+
 test("startup and reloading protected routes show Azure connection with no demo controls", async ({
   page,
 }) => {
@@ -1131,7 +1173,10 @@ test("branded loading follows pending requests and reduced motion on desktop and
       }),
     ).toBeVisible();
     await expect(page.locator(".loading-state")).toHaveCount(2);
-    await expect(page.locator(".content > div").last()).toHaveCSS("opacity", "1");
+    await expect(page.locator(".content > div").last()).toHaveCSS(
+      "opacity",
+      "1",
+    );
     await expect(page.locator(".loading-orbit").first()).toHaveCSS(
       "animation-name",
       "spin",

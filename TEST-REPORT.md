@@ -1,11 +1,19 @@
 # Validation report
 
-Loading, branding and task closure updates validated on 2026-10-23. Full UI review completed on 2026-10-22.
+Startup, loading, branding and task closure updates validated on 2026-10-23. Full UI review completed on 2026-10-22.
 
 - Production build passes, including TypeScript checking.
-- Vitest: 131 tests across 19 files (`npm test -- --maxWorkers=2`).
-- Chrome: 6 focused browser tests pass for loading, themes, startup, task closure, live hours and mobile editing using mocked Azure HTTP responses. The earlier full browser run covered 24 tests.
+- Vitest: 132 tests across 20 files (`npm test -- --maxWorkers=2`).
+- Chrome: 6 focused browser tests pass for startup timing, reloads, loading, themes, task closure and mobile editing using mocked Azure HTTP responses. The earlier full browser run covered 24 tests.
 - The 2026-10-22 UI review checked all seven screens in light and dark at 390px, 768px, 1024px, and 1440px, with 56 screenshots and no horizontal overflow or controls extending outside the viewport.
+
+## Startup icon screen
+
+- A centered Mongiz icon and bilingual wordmark appear for 500 milliseconds on initial opening and full reload, before the workspace mounts. In-app navigation does not restart the splash.
+- The startup screen follows the saved/system theme. The check draws once during startup; reduced motion keeps it static and visible.
+- The StrictMode timing test checks the splash at 499ms and workspace visibility at 500ms, then verifies subsequent content changes do not replay it. Chrome checks the same timing, full reload, light desktop, dark mobile and reduced-motion rendering.
+- Previews reviewed: `docs/mongiz-startup-light-preview.png` and `docs/mongiz-startup-mobile-preview.png`.
+- Production build, all 132 Vitest tests and 6 focused Chrome tests pass.
 
 ## Loading and branding update
 

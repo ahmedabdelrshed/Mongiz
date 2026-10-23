@@ -243,6 +243,51 @@ legend {
 .app-shell {
   min-height: 100dvh;
 }
+.startup-splash {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+  background: var(--background);
+}
+.startup-brand {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+.startup-mark {
+  display: block;
+  width: 92px;
+  height: 92px;
+}
+.startup-mark .mongiz-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: startup-check 360ms ease-out;
+}
+.startup-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.6px;
+}
+.startup-name span {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+@keyframes startup-check {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
