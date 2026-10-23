@@ -1015,6 +1015,62 @@ test("My Work category actions fit mobile and save only the searched task's hour
   ]);
 });
 
+test("individual and bulk closure save only edited or selected tasks under the same story", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-10-07T12:00:00Z"));
+  const { calls } = await azureFixture(page, true, 3, "Active");
+  await navigate(page, "My work");
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(page.getByLabel("Filter user")).toContainText("My tasks");
+  await page
+    .getByLabel("Item 1000 state", { exact: true })
+    .selectOption("Closed");
+  for (const id of [1001, 1002]) {
+    await expect(
+      page.getByLabel(`Item ${id} state`, { exact: true }),
+    ).toHaveValue("Active");
+    await expect(page.getByLabel(`Item ${id} completed hours`)).toHaveValue(
+      "2",
+    );
+  }
+  await page
+    .getByRole("checkbox", { name: "Select task: Item 1001", exact: true })
+    .check();
+  await page.getByLabel("Bulk task state").selectOption("Closed");
+  await page.getByRole("button", { name: "Apply to selected tasks" }).click();
+  await expect(page.getByLabel("Item 1001 state", { exact: true })).toHaveValue(
+    "Closed",
+  );
+  await expect(page.getByLabel("Item 1001 completed hours")).toHaveValue("3");
+  await expect(page.getByLabel("Item 1002 state", { exact: true })).toHaveValue(
+    "Active",
+  );
+  await expect(page.getByLabel("Item 1002 completed hours")).toHaveValue("2");
+  await expect(page.getByLabel("Item 10 story state")).toHaveValue("New");
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  await page.getByRole("button", { name: /Save changes/ }).click();
+  await expect(page.getByText("Saved changes to 2 work items.")).toBeVisible();
+  const writes = calls.filter((call) => Array.isArray(call.body));
+  expect(
+    writes.map((call) => new URL(call.url).pathname.split("/").pop()),
+  ).toEqual(["1000", "1001"]);
+  for (const write of writes) {
+    expect(write.body).toContainEqual({ op: "test", path: "/rev", value: 1 });
+    expect(write.body).toContainEqual({
+      op: "add",
+      path: "/fields/System.State",
+      value: "Closed",
+    });
+    expect(write.body).toContainEqual({
+      op: "add",
+      path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork",
+      value: 3,
+    });
+  }
+});
+
 test("completed work changes only with status and all-project hour bars preview closures before Save", async ({
   page,
 }) => {

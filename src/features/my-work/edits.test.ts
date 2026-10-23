@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { fields, type WorkItem } from "../../shared/api/types";
 import { effective, patchValues, stage, stageState } from "./edits";
-const tasks: WorkItem[] = [1, 2, 3].map((id) => ({
+const tasks: WorkItem[] = [1, 2, 3, 4].map((id) => ({
   id,
   rev: 1,
   title: `Task ${id}`,
@@ -12,18 +12,19 @@ const tasks: WorkItem[] = [1, 2, 3].map((id) => ({
   parentId: id === 3 ? 200 : 100,
   estimate: 0.5,
 }));
-it("stages sibling closure across assignees without touching a different story", () => {
-  const edits = stageState(
-    tasks,
-    {},
-    tasks[0],
-    "Closed",
-    Object.values(fields),
-  );
-  expect(Object.keys(edits)).toEqual(["1", "2"]);
-  expect(effective(tasks[1], edits).state).toBe("Closed");
-  expect(tasks[1].state).toBe("New");
-});
+it.each(["Closed", "Done", "Completed"])(
+  "stages %s only for the edited task, preserving siblings of every assignee",
+  (state) => {
+    const edits = stageState(tasks, {}, tasks[0], state, Object.values(fields));
+    expect(Object.keys(edits)).toEqual(["1"]);
+    expect(effective(tasks[0], edits)).toMatchObject({ state, completed: 0.5 });
+    for (const task of tasks.slice(1))
+      expect(effective(task, edits)).toMatchObject({
+        state: "New",
+        completed: undefined,
+      });
+  },
+);
 it("sets completed hours only on explicit status changes and retains the original revision", () => {
   let edits = stage(
     tasks,

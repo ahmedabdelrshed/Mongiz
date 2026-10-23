@@ -346,19 +346,17 @@ async function chooseFilter(
   await user.click(within(menu).getByText(option, { exact: true }));
   await user.keyboard("{Escape}");
 }
-it("edits remain local until Save; closure includes another user's sibling task", async () => {
+it("edits remain local until Save; closing a task preserves siblings of every assignee", async () => {
   const existing = await demoRepository.listMine();
+  const otherOwner = {
+    ...existing[2],
+    id: 2490,
+    title: "Backend by Sara",
+    assignedTo: "sara@example.com",
+  };
   localStorage.setItem(
     "taskflow:v1:demo:workitems",
-    JSON.stringify([
-      ...existing,
-      {
-        ...existing[2],
-        id: 2490,
-        title: "Backend by Sara",
-        assignedTo: "sara@example.com",
-      },
-    ]),
+    JSON.stringify([...existing, otherOwner]),
   );
   const update = vi.spyOn(demoRepository, "update");
   const user = userEvent.setup();
@@ -379,19 +377,89 @@ it("edits remain local until Save; closure includes another user's sibling task"
     screen.getByLabelText("Build search form state"),
     "Closed",
   );
-  expect(screen.getByLabelText("Backend by Sara state")).toHaveValue("Closed");
+  expect(screen.getByLabelText("Backend by Sara state")).toHaveValue("Active");
   expect(screen.getByLabelText("Integrate traceability API state")).toHaveValue(
-    "Closed",
+    "New",
   );
+  expect(screen.getByLabelText("Backend by Sara completed hours")).toHaveValue(
+    null,
+  );
+  expect(
+    screen.getByLabelText("Integrate traceability API completed hours"),
+  ).toHaveValue(null);
   expect(update).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: /Save changes/ }));
-  await screen.findByText(/Saved changes to/);
+  await screen.findByText("Saved changes to 1 work items.");
   const saved = await demoRepository.listMine();
-  expect(
-    saved.filter((i) => i.parentId === 2481).every((i) => i.state === "Closed"),
-  ).toBe(true);
-  expect(saved.find((i) => i.id === 2483)?.estimate).toBe(5);
+  expect(update).toHaveBeenCalledOnce();
+  expect(update.mock.calls[0][0].id).toBe(2483);
+  expect(saved.find((i) => i.id === 2483)).toMatchObject({
+    state: "Closed",
+    estimate: 5,
+    completed: 5,
+  });
+  expect(saved.find((i) => i.id === 2484)).toEqual(
+    existing.find((i) => i.id === 2484),
+  );
+  expect(saved.find((i) => i.id === 2490)).toEqual(otherOwner);
+  expect(saved.find((i) => i.id === 2481)).toEqual(existing[0]);
   expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
+});
+it("bulk closure saves only selected My tasks and leaves unselected and hidden siblings unchanged", async () => {
+  const existing = await demoRepository.listMine();
+  const task = existing.find((item) => item.id === 2483)!;
+  const unselected = { ...task, id: 2491, title: "Unselected task" };
+  const otherOwner = {
+    ...task,
+    id: 2490,
+    title: "Sara hidden task",
+    assignedTo: "sara@example.com",
+  };
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify([...existing, unselected, otherOwner]),
+  );
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  setup();
+  await screen.findByLabelText("Build search form state");
+  expect(screen.getByLabelText("Filter user")).toHaveTextContent("My tasks");
+  expect(
+    screen.queryByLabelText("Sara hidden task state"),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByLabelText("Select all tasks"));
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select task: Analyze requirements" }),
+  );
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select task: Unselected task" }),
+  );
+  await user.selectOptions(screen.getByLabelText("Bulk task state"), "Closed");
+  await user.type(screen.getByLabelText("Bulk task estimate"), "6");
+  await user.click(
+    screen.getByRole("button", { name: "Apply to selected tasks" }),
+  );
+  for (const title of ["Build search form", "Integrate traceability API"]) {
+    expect(screen.getByLabelText(`${title} state`)).toHaveValue("Closed");
+    expect(screen.getByLabelText(`${title} completed hours`)).toHaveValue(6);
+  }
+  expect(screen.getByLabelText("Unselected task state")).toHaveValue("Active");
+  expect(screen.getByLabelText("Unselected task completed hours")).toHaveValue(
+    null,
+  );
+  expect(
+    Object.keys(
+      JSON.parse(localStorage.getItem("taskflow:v1:demo:work-edits")!),
+    ),
+  ).toEqual(["2483", "2484"]);
+  expect(update).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: /Save changes/ }));
+  await screen.findByText("Saved changes to 2 work items.");
+  expect(update.mock.calls.map(([item]) => item.id)).toEqual([2483, 2484]);
+  const saved = await demoRepository.listMine("all");
+  expect(saved.find((item) => item.id === unselected.id)).toEqual(unselected);
+  expect(saved.find((item) => item.id === otherOwner.id)).toEqual(otherOwner);
+  expect(saved.find((item) => item.id === 2481)).toEqual(existing[0]);
 });
 it("keeps failed edits and clears successful edits after a partial save", async () => {
   const original = demoRepository.update;
@@ -701,7 +769,7 @@ it("refresh stays available with manual edits and preserves the draft", async ()
   expect(screen.getByRole("button", { name: /Save changes/ })).toBeEnabled();
 });
 
-it("loading and estimate edits keep completed hours unchanged; closing siblings updates live bars and discard restores saved hours", async () => {
+it("loading and estimate edits keep completed hours unchanged; closing one task updates only its live hours and discard restores saved hours", async () => {
   const update = vi.spyOn(demoRepository, "update");
   const user = userEvent.setup();
   setup();
@@ -728,8 +796,11 @@ it("loading and estimate edits keep completed hours unchanged; closing siblings 
   ).toHaveValue(5);
   expect(
     screen.getByLabelText("Integrate traceability API completed hours"),
-  ).toHaveValue(2);
-  expect(screen.getAllByText("Completed: 9h")[0]).toBeInTheDocument();
+  ).toHaveValue(null);
+  expect(screen.getByLabelText("Integrate traceability API state")).toHaveValue(
+    "New",
+  );
+  expect(screen.getAllByText("Completed: 7h")[0]).toBeInTheDocument();
   expect(update).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "Discard changes" }));
   expect(screen.getAllByText("Completed: 2h")[0]).toBeInTheDocument();

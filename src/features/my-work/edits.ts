@@ -92,18 +92,7 @@ export function stageState(
   state: string,
   supported: string[],
 ): Edits {
-  const closing = ["closed", "done", "completed"].includes(state.toLowerCase());
-  const siblings =
-    closing && !item.isStory && item.parentId
-      ? items.filter(
-          (t) =>
-            (t.isTask ?? t.type === item.type) && t.parentId === item.parentId,
-        )
-      : [item];
-  return siblings.reduce(
-    (next, t) => stage(items, next, t.id, { "System.State": state }, supported),
-    edits,
-  );
+  return stage(items, edits, item.id, { "System.State": state }, supported);
 }
 export function patchValues(
   values: Record<string, string | number>,

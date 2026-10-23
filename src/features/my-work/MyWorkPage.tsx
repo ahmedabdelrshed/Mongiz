@@ -710,11 +710,11 @@ function WorkList({
           Show all loaded items
         </button>
         <Notice compact label="How task changes work">
-          Closing one task stages the same closed state for all tasks under its
-          story, including tasks assigned to other users. Changing a task status
-          sets Completed Work to its current estimate. Loading and manual
-          estimate edits do not change Completed Work. Hour bars include pending
-          edits; Save changes applies them to Azure.
+          Closing a task changes only that task. Bulk changes apply only to
+          selected tasks. Changing a task status sets Completed Work to its
+          current estimate. Loading and manual estimate edits do not change
+          Completed Work. Hour bars include pending edits; Save changes applies
+          them to Azure.
         </Notice>
         {count > 0 && (
           <Notice compact label={`${count} unsaved work items`}>
@@ -966,7 +966,7 @@ function WorkList({
             <p className="muted">
               Shared estimates preserve tasks currently at{" "}
               {BULK_ESTIMATE_EXCLUDED_HOURS}h and tasks without an estimate.
-              Closing a task also closes all its siblings.
+              State changes apply only to selected tasks.
             </p>
           </AnimatedSection>
         )}

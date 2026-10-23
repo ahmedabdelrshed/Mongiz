@@ -1,18 +1,26 @@
 # Validation report
 
-Validated on 2026-10-22.
+Task closure update validated on 2026-10-23. Full UI review completed on 2026-10-22.
 
 - Production build passes, including TypeScript checking.
-- Vitest: 128 tests across 19 files.
-- Chrome: 24 browser tests using mocked Azure HTTP responses.
-- All seven screens checked in light and dark at 390px, 768px, 1024px, and 1440px, with 56 screenshots and no horizontal overflow or controls extending outside the viewport.
+- Vitest: 131 tests across 19 files.
+- Chrome: 3 focused browser tests pass for task closure, live hours and mobile editing using mocked Azure HTTP responses. The earlier full browser run covered 24 tests.
+- The 2026-10-22 UI review checked all seven screens in light and dark at 390px, 768px, 1024px, and 1440px, with 56 screenshots and no horizontal overflow or controls extending outside the viewport.
+
+## Task closure update
+
+- Closed, Done and Completed affect only the edited task. Bulk changes affect only selected tasks in the current view, which defaults to My tasks.
+- Unselected tasks assigned to you and visible or hidden tasks assigned to other users retain their state and completed hours. The parent story remains unchanged.
+- Tests reproduced the old sibling closure before the fix, then verified individual and bulk saves update only the intended IDs, with revision checks and completed hours based on each edited task's estimate.
+- Live hour totals and Discard reflect only the edited tasks. Existing drafts are preserved; use Discard changes to clear any automatic sibling closures staged before this fix.
+- Verification: production build, all 131 Vitest tests and 3 focused Chrome tests pass. No live Azure credentials were used.
 
 ## Workspace redesign
 
 - Appearance defaults to the device theme, persists explicit preferences across reloads, follows device changes in System mode, and remains usable when browser storage is unavailable.
 - Compact navigation and task panels support Escape, focus trapping, and focus restoration. Mobile edits survive panel closure, desktop resizing, and refresh, and are submitted only through Save changes.
 - Reduced motion removes panel translation. Collapsed sections remain out of keyboard and screen-reader navigation while preserving form state.
-- Compact hour totals preserve independent calculation state and preview staged values. Allocation, Save/Discard, status propagation, and revision-checked updates retain their existing behavior.
+- Compact hour totals preserve independent calculation state and preview staged values. Allocation, Save/Discard, and revision-checked updates retain their existing behavior. Task state changes now affect only edited or selected tasks.
 - The 500-task list remains virtualized, reaches its final row, and preserves edits through scrolling and refresh. Short lists fit their contents.
 - Creation preserves shared inheritance, explicit review, default tasks, successful reset, and partial-failure protections. Template deletion requires confirmation and cancellation preserves the template.
 - Current previews: docs/mongiz-light-preview.png, docs/mongiz-dark-preview.png, and docs/mongiz-mobile-dark-preview.png.
@@ -38,7 +46,7 @@ Validated on 2026-10-22.
 - Creation validates before submission, creates parents before tasks, skips successful IDs within the open batch, and blocks uncertain automatic reposts. Legacy marker reconciliation is covered.
 - PAT verification, Basic authentication, memory-only token lifetime, configuration-only persistence and disconnect/reconnect are covered with mocked responses.
 - Project-scoped Graph pagination, deduplication, group/service/deleted-user filtering, permission failures and repeated-token detection are covered.
-- My Work edits remain local until explicit Save and survive reload. Closing a task stages all siblings, including other assignees.
+- My Work edits remain local until explicit Save and survive reload. Closing a task affects only that task; bulk closure affects only selected tasks.
 - New/Active tasks stage Completed Work equal to Original Estimate where supported. Validation and optimistic revision checking preserve failed edits and clear successful ones.
 - Assigned-work reads expand missing parent stories and all direct child tasks.
 
@@ -61,7 +69,7 @@ Current screenshots: docs/desktop-preview.png, docs/mobile-preview.png and docs/
 ## Owner/sprint filters and hour summaries
 
 - Default owner identity, case-insensitive matching, other-user and All users options.
-- Current/specific/all sprint filters apply to task rows; hidden siblings remain available for closure.
+- Current/specific/all sprint filters apply to task rows; hidden tasks remain unchanged when a visible task is closed.
 - Sprint/month sums, decimal rounding, missing numbers, duplicate sprint paths and ambiguous/missing month dates.
 - Editable 30–40h range and preference persistence; sprint/project/user changes update summaries.
 - A 1,001-item mocked Azure read verifies successive ID-page loading; selected identities are WIQL-escaped.
