@@ -13,7 +13,6 @@ import {
   Copy,
   Settings,
   ArrowUpRight,
-  Command,
   Cloud,
   ArrowRightLeft,
   Gauge,
@@ -29,6 +28,7 @@ import { SettingsPage } from "../features/project/SettingsPage";
 import { Notice } from "../shared/ui/Common";
 import { Modal } from "../shared/ui/Dialog";
 import { PageEntry, useCompactLayout } from "../shared/ui/Motion";
+import { MongizMark } from "../shared/ui/MongizMark";
 export function App() {
   const w = useWorkspace();
   const location = useLocation();
@@ -47,9 +47,7 @@ export function App() {
   const navigation = (
     <>
       <div className="brand">
-        <div className="brand-mark">
-          <Command size={21} />
-        </div>
+        <MongizMark className="brand-mark" />
         Mongiz<span className="brand-dot">.</span>
         <span className="brand-arabic" lang="ar" dir="rtl">
           منجز

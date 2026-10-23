@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useWorkspace } from "../../app/Workspace";
-import { Loading, Notice } from "../../shared/ui/Common";
+import { BusyIndicator, Loading, Notice } from "../../shared/ui/Common";
 import { effective, type Edits } from "./edits";
 import { HoursSummary } from "./HoursSummary";
 import type { SprintTarget } from "./filters";
@@ -32,7 +32,10 @@ export function HoursPanel({
     );
   if (!w.hoursMeta || !w.hours.data)
     return (
-      <Loading label="Loading hour totals across all accessible projects…" />
+      <Loading
+        label="Loading hour totals across all accessible projects…"
+        description="Gathering estimates and completed hours for your sprint overview."
+      />
     );
   return (
     <>
@@ -47,7 +50,12 @@ export function HoursPanel({
         people={w.hoursMeta.people}
         actions={
           <>
-            <button disabled={w.hours.isFetching} onClick={w.refreshHours}>
+            <button
+              disabled={w.hours.isFetching}
+              aria-busy={w.hours.isFetching}
+              onClick={w.refreshHours}
+            >
+              {w.hours.isFetching && <BusyIndicator />}
               {w.hours.isFetching
                 ? "Refreshing hours…"
                 : "Refresh all-project hours"}

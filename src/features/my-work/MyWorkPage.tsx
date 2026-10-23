@@ -18,7 +18,13 @@ import {
   type WorkItem,
   type WorkLoadProgress,
 } from "../../shared/api/types";
-import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
+import {
+  BusyIndicator,
+  Empty,
+  Loading,
+  Notice,
+  PageTitle,
+} from "../../shared/ui/Common";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 import { Modal } from "../../shared/ui/Dialog";
 import {
@@ -143,6 +149,7 @@ function WorkLoadPanel({
     >
       <div className="work-load-progress-heading">
         <strong>
+          {loading && !failed && <BusyIndicator />}
           {failed
             ? "Loading stopped"
             : loading
@@ -618,29 +625,44 @@ function WorkList({
                 !groups.length
               }
               title="Export all stories and tasks in the current filtered view, including unsaved changes. Wait for loading to finish before exporting."
+              aria-busy={exporting}
               onClick={() => void downloadExcel()}
             >
-              <Download size={15} />
+              {exporting ? (
+                <BusyIndicator />
+              ) : (
+                <Download size={15} aria-hidden="true" />
+              )}
               {exporting ? "Exporting…" : "Export Excel"}
             </button>
             {count === 0 && (
               <button
                 className="primary"
                 disabled={busy || !count}
+                aria-busy={busy}
                 onClick={() => void save()}
               >
-                <Save size={15} />
+                {busy ? (
+                  <BusyIndicator />
+                ) : (
+                  <Save size={15} aria-hidden="true" />
+                )}
                 {busy ? "Saving…" : `Save changes${count ? ` (${count})` : ""}`}
               </button>
             )}
             <button
               disabled={busy}
+              aria-busy={query.isFetching}
               onClick={() => {
                 void query.refetch();
                 if (w.settings.mode === "azure") w.refreshHours();
               }}
             >
-              <RefreshCw size={15} />
+              <RefreshCw
+                size={15}
+                className={query.isFetching ? "spin" : undefined}
+                aria-hidden="true"
+              />
               {query.isFetching ? "Refreshing…" : "Refresh"}
             </button>
             <Link className="button" to="/create">
@@ -1261,9 +1283,10 @@ function WorkList({
             <button
               className="primary"
               disabled={busy}
+              aria-busy={busy}
               onClick={() => void save()}
             >
-              <Save size={15} />
+              {busy ? <BusyIndicator /> : <Save size={15} aria-hidden="true" />}
               {busy ? "Saving…" : `Save changes (${count})`}
             </button>
           </div>

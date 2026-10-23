@@ -1104,6 +1104,97 @@ test("completed work changes only with status and all-project hour bars preview 
     page.getByRole("button", { name: /Save changes/ }),
   ).toBeDisabled();
 });
+test("branded loading follows pending requests and reduced motion on desktop and mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({
+    colorScheme: "light",
+    reducedMotion: "no-preference",
+  });
+  await azureFixture(page, true);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/workitemtypecategories?*", async (route) => {
+    await pending;
+    await route.fallback();
+  });
+  try {
+    await navigate(page, "My work");
+    await page.getByLabel("Load project OMS").check();
+    await page.getByRole("button", { name: "Load selected projects" }).click();
+    await expect(
+      page.getByText("Loading all accessible stories and tasks…", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.locator(".loading-state")).toHaveCount(2);
+    await expect(page.locator(".content > div").last()).toHaveCSS("opacity", "1");
+    await expect(page.locator(".loading-orbit").first()).toHaveCSS(
+      "animation-name",
+      "spin",
+    );
+    await expect(page.locator("link[rel='icon']")).toHaveAttribute(
+      "href",
+      "/mongiz-icon.svg",
+    );
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await page.screenshot({
+        path: `docs/mongiz-loading-${theme}-preview.png`,
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      page.getByRole("button", { name: "Open navigation" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: "docs/mongiz-loading-mobile-preview.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const selector of [
+      ".loading-orbit",
+      ".loading-mark .mongiz-check",
+      ".loading-lines span",
+    ])
+      await expect(page.locator(selector).first()).toHaveCSS(
+        "animation-name",
+        "none",
+      );
+    await expect(page.locator(".loading-mark .mongiz-check").first()).toHaveCSS(
+      "opacity",
+      "1",
+    );
+    release();
+    await expect(
+      page.getByRole("button", { name: "Edit task: Item 11", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".loading-state")).toHaveCount(0);
+  } finally {
+    release();
+  }
+  const icon = await page.context().newPage();
+  await icon.setViewportSize({ width: 256, height: 256 });
+  await icon.goto("/mongiz-icon.svg");
+  await icon.screenshot({
+    path: "docs/mongiz-icon-preview.png",
+    omitBackground: true,
+  });
+  await icon.close();
+});
+
 test("appearance follows the system and remembers an explicit theme across reloads", async ({
   page,
 }) => {

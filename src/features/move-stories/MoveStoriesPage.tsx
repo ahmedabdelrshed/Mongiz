@@ -6,7 +6,13 @@ import { Link } from "react-router-dom";
 import { ArrowRightLeft, RefreshCw } from "lucide-react";
 import { useWorkspace } from "../../app/Workspace";
 import type { Choice, WorkItem } from "../../shared/api/types";
-import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
+import {
+  BusyIndicator,
+  Empty,
+  Loading,
+  Notice,
+  PageTitle,
+} from "../../shared/ui/Common";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 import { readStored, storageKey } from "../../shared/storage/storage";
 import { isEdits } from "../my-work/edits";
@@ -629,7 +635,9 @@ function ProjectStories({
                 !!pendingEdits(review.plan).length
               }
               onClick={() => void submit()}
+              aria-busy={busy}
             >
+              {busy && <BusyIndicator />}
               Move
             </button>
           </div>

@@ -48,6 +48,10 @@ The ZIP deliberately excludes node_modules, generated build output and credentia
 
 Choose **Light**, **Dark**, or **System** under **Settings → Appearance**. System is the default and follows your device appearance. The preference is remembered in this browser independently of your Azure connection.
 
+Mongiz uses an **M + completion check** icon: the initial stands for Mongiz, and the check represents completed work. The cobalt and mint SVG appears in navigation and the browser tab (`public/mongiz-icon.svg`). Shared loading cards animate the same mark with an orbit and subtle placeholder shimmer. Connecting, saving, creating, moving and refreshing show activity beside their existing labels. Loading follows real requests; there are no artificial delays or made-up percentages. Device reduced-motion settings leave all indicators static and keep the status text visible.
+
+Previews: [icon](docs/mongiz-icon-preview.png), [light loading](docs/mongiz-loading-light-preview.png), [dark loading](docs/mongiz-loading-dark-preview.png), and [mobile loading](docs/mongiz-loading-mobile-preview.png).
+
 The desktop sidebar groups daily work and workspace tools. Below 1024px, use the menu button in the header to open navigation. Task fields remain inline on desktop; on smaller screens, **Edit** opens a labeled task panel. **Done** closes the panel and keeps staged edits; **Save changes** in the bottom bar writes them to Azure. Short work lists fit their contents while large lists remain virtualized.
 
 My Work shows compact sprint totals. Open **Hour settings and breakdowns** for calculation filters, capacity targets, project/month totals, and hour refresh. **Fill sprint minimum** opens the separate list allocation controls. Changing list projects or filters preserves the independent hour settings.

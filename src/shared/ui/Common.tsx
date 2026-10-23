@@ -1,7 +1,8 @@
 import { useId, type ReactNode } from "react";
-import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { fade } from "./Motion";
+import { MongizMark } from "./MongizMark";
 export function Notice({
   children,
   tone = "info",
@@ -40,11 +41,41 @@ export function Notice({
     </motion.div>
   );
 }
-export function Loading({ label = "Loading workspace…" }: { label?: string }) {
+export function BusyIndicator() {
   return (
-    <div className="empty" role="status" aria-busy="true">
-      <LoaderCircle className="spin" />
-      {label}
+    <span className="busy-indicator" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+export function Loading({
+  label = "Loading workspace…",
+  description,
+}: {
+  label?: string;
+  description?: string;
+}) {
+  return (
+    <div
+      className="loading-state"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div className="loading-visual" aria-hidden="true">
+        <span className="loading-orbit" />
+        <MongizMark className="loading-mark" />
+      </div>
+      <div className="loading-copy">
+        <strong>{label}</strong>
+        {description && <p>{description}</p>}
+        <div className="loading-lines" aria-hidden="true">
+          <span />
+          <span />
+        </div>
+      </div>
     </div>
   );
 }

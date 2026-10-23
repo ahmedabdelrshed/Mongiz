@@ -267,14 +267,10 @@ legend {
   margin-bottom: 32px;
 }
 .brand-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 29px;
-  height: 29px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  display: block;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
 }
 .brand-dot {
   color: var(--blue);
@@ -625,6 +621,139 @@ legend {
 .empty h3 {
   color: var(--text);
   font-size: 16px;
+}
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 160px;
+  padding: 28px clamp(18px, 4vw, 36px);
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.loading-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+}
+.loading-orbit {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--line);
+  border-top-color: var(--blue);
+  border-right-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 2.2s linear infinite;
+}
+.loading-mark {
+  width: 42px;
+  height: 42px;
+}
+.loading-mark .mongiz-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: loading-check 2.8s ease-in-out infinite;
+}
+.loading-copy {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+.loading-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+.loading-copy p {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+.loading-lines {
+  display: grid;
+  gap: 8px;
+  margin-top: 15px;
+}
+.loading-lines span {
+  width: 88%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    100deg,
+    var(--hover) 25%,
+    var(--line) 45%,
+    var(--hover) 65%
+  );
+  background-size: 240% 100%;
+  animation: loading-shimmer 2.2s ease-in-out infinite;
+}
+.loading-lines span + span {
+  width: 58%;
+  animation-delay: 0.15s;
+}
+.busy-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  width: 18px;
+  height: 16px;
+}
+.busy-indicator > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: loading-dot 1.2s ease-in-out infinite;
+}
+.busy-indicator > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.busy-indicator > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes loading-check {
+  0%,
+  15% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  45%,
+  85% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+@keyframes loading-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+@keyframes loading-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -993,6 +1122,11 @@ legend {
   gap: 8px;
   font-size: 12px;
   margin-bottom: 6px;
+}
+.work-load-progress-heading > strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .work-load-progress progress {
   width: 100%;

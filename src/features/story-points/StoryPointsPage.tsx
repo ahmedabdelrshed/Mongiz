@@ -4,7 +4,13 @@ import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useWorkspace } from "../../app/Workspace";
 import type { Choice, WorkItem } from "../../shared/api/types";
-import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
+import {
+  BusyIndicator,
+  Empty,
+  Loading,
+  Notice,
+  PageTitle,
+} from "../../shared/ui/Common";
 import { SearchableMultiSelect } from "../../shared/ui/SearchableMultiSelect";
 import { readStored, storageKey } from "../../shared/storage/storage";
 import { isEdits, patchValues } from "../my-work/edits";
@@ -364,8 +370,10 @@ function ProjectStories({
                   className="primary"
                   type="submit"
                   aria-label={`Save story points for #${story.id}`}
+                  aria-busy={savingId === story.id}
                   disabled={busy || !fieldFor(story)}
                 >
+                  {savingId === story.id && <BusyIndicator />}
                   {savingId === story.id ? "Saving…" : "Save"}
                 </button>
                 {errors[story.id] && (

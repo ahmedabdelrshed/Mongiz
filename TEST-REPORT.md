@@ -1,11 +1,21 @@
 # Validation report
 
-Task closure update validated on 2026-10-23. Full UI review completed on 2026-10-22.
+Loading, branding and task closure updates validated on 2026-10-23. Full UI review completed on 2026-10-22.
 
 - Production build passes, including TypeScript checking.
-- Vitest: 131 tests across 19 files.
-- Chrome: 3 focused browser tests pass for task closure, live hours and mobile editing using mocked Azure HTTP responses. The earlier full browser run covered 24 tests.
+- Vitest: 131 tests across 19 files (`npm test -- --maxWorkers=2`).
+- Chrome: 6 focused browser tests pass for loading, themes, startup, task closure, live hours and mobile editing using mocked Azure HTTP responses. The earlier full browser run covered 24 tests.
 - The 2026-10-22 UI review checked all seven screens in light and dark at 390px, 768px, 1024px, and 1440px, with 56 screenshots and no horizontal overflow or controls extending outside the viewport.
+
+## Loading and branding update
+
+- The custom SVG icon combines Mongiz's M with a completion check, using cobalt blue and mint. The same geometry appears in navigation, shared loading cards and the browser favicon.
+- Loading cards show an orbit, a drawing check mark and subtle placeholder shimmer while requests are pending. Existing labels remain visible, actual progress counts remain unchanged, and no artificial delays or percentages are added.
+- Connection, Save, export, creation, move and story-point actions show inline activity. Refresh icons animate while work is reloading.
+- Browser checks hold mocked metadata requests pending, verify both loaders appear, release the requests and confirm real work replaces the loaders. Reduced-motion checks verify that animation stops and the check mark remains visible.
+- Desktop previews reviewed in light and dark at 1440px; dark mobile preview reviewed at 390px with no horizontal overflow.
+- Previews: `docs/mongiz-icon-preview.png`, `docs/mongiz-loading-light-preview.png`, `docs/mongiz-loading-dark-preview.png`, and `docs/mongiz-loading-mobile-preview.png`.
+- Production build, all 131 Vitest tests and 6 focused Chrome tests pass. Browser screenshots capture the static frame of the SVG/CSS animations.
 
 ## Task closure update
 

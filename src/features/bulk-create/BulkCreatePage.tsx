@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Download, Upload, ArrowRight, CheckCircle2 } from "lucide-react";
 import { useWorkspace } from "../../app/Workspace";
-import { Empty, Loading, Notice, PageTitle } from "../../shared/ui/Common";
+import {
+  BusyIndicator,
+  Empty,
+  Loading,
+  Notice,
+  PageTitle,
+} from "../../shared/ui/Common";
 import {
   defaultTaskDefinitions,
   draftSchema,
@@ -637,7 +643,9 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
                   count.stories + count.tasks
               }
               onClick={() => void submit()}
+              aria-busy={busy}
             >
+              {busy && <BusyIndicator />}
               {busy ? "Creating…" : "Retry / reconcile incomplete items"}
             </button>
           ) : review ? (
@@ -645,7 +653,9 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
               className="primary"
               disabled={busy}
               onClick={() => void submit()}
+              aria-busy={busy}
             >
+              {busy && <BusyIndicator />}
               {busy
                 ? "Creating…"
                 : `Create ${count.stories} stories + ${count.tasks} tasks`}

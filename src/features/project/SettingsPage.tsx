@@ -5,7 +5,7 @@ import { PatAuth } from "../auth/pat";
 import type { AuthSession } from "../auth/types";
 import { AzureAuth } from "../auth/msal";
 import type { Settings } from "../../shared/api/types";
-import { Notice, PageTitle } from "../../shared/ui/Common";
+import { BusyIndicator, Notice, PageTitle } from "../../shared/ui/Common";
 import { AppearanceSettings } from "../../app/Appearance";
 import { Disclosure } from "../../shared/ui/Motion";
 export function SettingsPage() {
@@ -176,7 +176,13 @@ export function SettingsPage() {
               </>
             )}
           </div>
-          <button className="primary" disabled={busy} onClick={signIn}>
+          <button
+            className="primary"
+            disabled={busy}
+            aria-busy={busy}
+            onClick={signIn}
+          >
+            {busy && <BusyIndicator />}
             {busy
               ? "Connecting…"
               : draft.authMethod === "pat"
