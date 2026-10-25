@@ -28,6 +28,14 @@ npm run test:e2e
 
 The ZIP deliberately excludes node_modules, generated build output and credentials. package-lock.json is included for reproducible npm ci installation.
 
+## Deploy to Vercel
+
+Use the **Vite** framework preset, `npm run build` as the build command, and `dist` as the output directory. Set the project root to the directory containing `package.json` and `vercel.json`.
+
+The root `vercel.json` rewrites incoming paths to `/index.html` so React Router can handle direct visits and refreshes on routes such as `/settings` and `/work`. The settings route is `/settings` (plural). `staticwebapp.config.json` provides the fallback for Azure Static Web Apps; Vercel uses `vercel.json` instead. See [Vercel's Vite SPA guide](https://vercel.com/docs/frameworks/frontend/vite#using-vite-to-make-spas).
+
+Redeploy after changing the routing configuration, then open `/settings` directly and refresh it to verify the deployed fallback.
+
 ## Included features
 
 - Move stories: choose any accessible project, search/filter its stories, and move selected stories to any project iteration or backlog. Optionally include direct child tasks by status (none selected by default, including Closed only when explicitly selected). Review exact changes, see per-item results, and retry unfinished changes after refreshing.
