@@ -11,6 +11,8 @@ npm ci
 npm run dev
 ```
 
+
+
 Open the localhost URL printed by Vite. Connect your Azure DevOps Services organization using the Settings page. Demo mode is no longer available. Do not open index.html by double clicking; serve the app with Vite or another web server.
 
 ```bash
