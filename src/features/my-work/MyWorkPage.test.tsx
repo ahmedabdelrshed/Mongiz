@@ -18,6 +18,153 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("copies only selected implementation tasks for a PR and preserves drafts and selection", async () => {
+  const existing = await demoRepository.listMine();
+  const base = existing.find((item) => item.type === "Task")!;
+  const titles: Record<number, string> = {
+    2482: "Implement frontend requirements",
+    2483: "Implement backend requirements",
+    2484: "Unit testing",
+  };
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify([
+      ...existing.map((item) => ({
+        ...item,
+        title: titles[item.id] ?? item.title,
+      })),
+      { ...base, id: 2485, title: "Frontend code review" },
+      { ...base, id: 2486, title: "Link frontend source code" },
+      { ...base, id: 2487, title: "Implement unselected requirements" },
+      {
+        ...base,
+        id: 2488,
+        title: "Implement another user's requirements",
+        assignedTo: "sara@example.com",
+      },
+    ]),
+  );
+  const update = vi.spyOn(demoRepository, "update");
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  setup();
+  const estimate = await screen.findByLabelText(
+    "Implement frontend requirements estimate hours",
+  );
+  const buttonName = "Copy implementation tasks for PR";
+  expect(
+    screen.queryByRole("button", { name: buttonName }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByLabelText("Select all user stories"));
+  expect(
+    screen.queryByRole("button", { name: buttonName }),
+  ).not.toBeInTheDocument();
+  await user.clear(estimate);
+  await user.type(estimate, "7");
+  await user.click(screen.getByLabelText("Select all tasks"));
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: "Select task: Implement unselected requirements",
+    }),
+  );
+  const draft = localStorage.getItem("taskflow:v1:demo:work-edits");
+  await user.click(screen.getByRole("button", { name: buttonName }));
+  await screen.findByText(/Copied 2 implementation tasks/);
+  expect(write).toHaveBeenCalledExactlyOnceWith("#2482 #2483");
+  expect(update).not.toHaveBeenCalled();
+  expect(localStorage.getItem("taskflow:v1:demo:work-edits")).toBe(draft);
+  expect(estimate).toHaveValue(7);
+  expect(screen.getByLabelText("Select all user stories")).toBeChecked();
+  expect(
+    screen.getByRole("checkbox", {
+      name: "Select task: Implement frontend requirements",
+    }),
+  ).toBeChecked();
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: "Select task: Implement backend requirements",
+    }),
+  );
+  expect(
+    screen.queryByText(/Copied 2 implementation tasks/),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: buttonName }));
+  await screen.findByText(/Copied 1 implementation task\./);
+  expect(write).toHaveBeenLastCalledWith("#2482");
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: "Select task: Implement frontend requirements",
+    }),
+  );
+  expect(screen.getByRole("button", { name: buttonName })).toBeDisabled();
+  await user.type(screen.getByLabelText("Search work"), "Unit testing");
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: buttonName }),
+    ).not.toBeInTheDocument(),
+  );
+});
+
+it.each(["denied", "unavailable"])(
+  "provides selectable PR text when clipboard access is %s and allows retrying",
+  async (access) => {
+    const existing = await demoRepository.listMine();
+    localStorage.setItem(
+      "taskflow:v1:demo:workitems",
+      JSON.stringify(
+        existing.map((item) => ({
+          ...item,
+          title:
+            item.id === 2482
+              ? "IMPLEMENT frontend [search]\n& <filters>"
+              : item.title,
+        })),
+      ),
+    );
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText");
+    const clipboard =
+      access === "unavailable"
+        ? vi.spyOn(navigator, "clipboard", "get").mockReturnValue(undefined!)
+        : undefined;
+    write.mockRejectedValueOnce(new Error("Clipboard permission denied"));
+    setup();
+    await screen.findByLabelText("Search work");
+    await user.click(screen.getByLabelText("Select all tasks"));
+    await user.click(
+      screen.getByRole("button", { name: "Copy implementation tasks for PR" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Copy implementation tasks",
+    });
+    const text = within(dialog).getByRole("textbox", {
+      name: "Pull request task text",
+    }) as HTMLTextAreaElement;
+    const expected = "#2482";
+    expect(text).toHaveValue(expected);
+    expect(text).toHaveAttribute("readonly");
+    await waitFor(() => expect(text).toHaveFocus());
+    expect(text.selectionStart).toBe(0);
+    expect(text.selectionEnd).toBe(expected.length);
+    expect(
+      screen.queryByText(/Copied 1 implementation task/),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    clipboard?.mockRestore();
+    write.mockReset().mockResolvedValue();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Copy implementation tasks for PR",
+      }),
+    );
+    await screen.findByText(/Copied 1 implementation task/);
+    expect(write).toHaveBeenLastCalledWith(expected);
+  },
+);
+
 it("exports the filtered view with parent stories and unsaved values without saving", async () => {
   const download = vi.spyOn(excelExport, "exportWorkItems").mockResolvedValue();
   const update = vi.spyOn(demoRepository, "update");

@@ -155,6 +155,65 @@ test("Excel export downloads all filtered rows with local edits, including offsc
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
 });
+test("PR copy includes selected offscreen implementation tasks and fits mobile", async ({
+  page,
+}, testInfo) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const { calls } = await azureFixture(page, true, 80, "Active", (id) =>
+    id % 2 === 0 ? `Implement frontend ${id}` : `Unit testing ${id}`,
+  );
+  await navigate(page, "My work");
+  await page.getByLabel("Load project OMS").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(
+    page.getByLabel("Implement frontend 1000 estimate hours"),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Implement frontend 1078 estimate hours"),
+  ).toHaveCount(0);
+  await page.getByLabel("Select all tasks", { exact: true }).check();
+  await page
+    .getByLabel("Select task: Implement frontend 1000", { exact: true })
+    .uncheck();
+  await page.getByLabel("Select all user stories", { exact: true }).check();
+  const copyButton = page.getByRole("button", {
+    name: "Copy implementation tasks for PR",
+  });
+  await copyButton.click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Copied 39 implementation tasks" }),
+  ).toBeVisible();
+  const expected = Array.from(
+    { length: 39 },
+    (_, index) => `#${1002 + index * 2}`,
+  ).join(" ");
+  const readClipboard = () =>
+    page.evaluate(() => navigator.clipboard.readText());
+  expect(await readClipboard()).toBe(expected);
+  await expect(
+    page.getByLabel("Select all tasks", { exact: true }),
+  ).toHaveJSProperty("indeterminate", true);
+  await expect(
+    page.getByLabel("Select all user stories", { exact: true }),
+  ).toBeChecked();
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await copyButton.scrollIntoViewIfNeeded();
+  await expect(copyButton).toBeVisible();
+  const bounds = (await copyButton.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  await copyButton.click();
+  expect(await readClipboard()).toBe(expected);
+  await page.screenshot({
+    path: testInfo.outputPath("my-work-pr-copy-mobile.png"),
+    fullPage: true,
+  });
+});
+
 async function azureFixture(
   page: Page,
   withHours = false,
