@@ -733,10 +733,10 @@ function WorkList({
         </button>
         <Notice compact label="How task changes work">
           Closing a task changes only that task. Bulk changes apply only to
-          selected tasks. Changing a task status sets Completed Work to its
-          current estimate. Loading and manual estimate edits do not change
-          Completed Work. Hour bars include pending edits; Save changes applies
-          them to Azure.
+          selected tasks. Changing a task status to Closed sets Completed Work
+          to its current estimate. Other status changes, loading and manual
+          estimate edits do not change Completed Work. Hour bars include pending
+          edits; Save changes applies them to Azure.
         </Notice>
         {count > 0 && (
           <Notice compact label={`${count} unsaved work items`}>

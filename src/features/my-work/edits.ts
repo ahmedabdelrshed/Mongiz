@@ -50,7 +50,8 @@ export function stage(
   const merged = { ...(next[id]?.values ?? {}), ...values };
   const estimate = merged[fields.estimate] ?? item.estimate;
   if (
-    values["System.State"] !== undefined &&
+    values["System.State"] === "Closed" &&
+    (next[id]?.values["System.State"] ?? item.state) !== "Closed" &&
     !item.isStory &&
     supported.includes(fields.completed) &&
     estimate !== undefined &&

@@ -405,6 +405,56 @@ it("edits remain local until Save; closing a task preserves siblings of every as
   expect(saved.find((i) => i.id === 2481)).toEqual(existing[0]);
   expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
 });
+it.each(["New", "Active"])(
+  "bulk changes to %s preserve completed hours when estimates also change",
+  async (state) => {
+    const existing = await demoRepository.listMine();
+    localStorage.setItem(
+      "taskflow:v1:demo:workitems",
+      JSON.stringify(
+        existing.map((item) =>
+          item.id === 2483 ? { ...item, completed: 1 } : item,
+        ),
+      ),
+    );
+    const update = vi.spyOn(demoRepository, "update");
+    const user = userEvent.setup();
+    setup();
+    await screen.findByLabelText("Build search form state");
+    for (const title of ["Build search form", "Integrate traceability API"])
+      await user.click(
+        screen.getByRole("checkbox", { name: `Select task: ${title}` }),
+      );
+    await user.selectOptions(screen.getByLabelText("Bulk task state"), state);
+    await user.type(screen.getByLabelText("Bulk task estimate"), "6");
+    await user.click(
+      screen.getByRole("button", { name: "Apply to selected tasks" }),
+    );
+    for (const title of ["Build search form", "Integrate traceability API"]) {
+      expect(screen.getByLabelText(`${title} state`)).toHaveValue(state);
+      expect(screen.getByLabelText(`${title} estimate hours`)).toHaveValue(6);
+    }
+    expect(
+      screen.getByLabelText("Build search form completed hours"),
+    ).toHaveValue(1);
+    expect(
+      screen.getByLabelText("Integrate traceability API completed hours"),
+    ).toHaveValue(null);
+    expect(update).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /Save changes/ }));
+    await screen.findByText("Saved changes to 2 work items.");
+    expect(update.mock.calls.map(([item]) => item.id)).toEqual([2483, 2484]);
+    for (const [, values] of update.mock.calls)
+      expect(values).not.toHaveProperty(fields.completed);
+    const saved = await demoRepository.listMine();
+    expect(saved.find((item) => item.id === 2483)).toMatchObject({
+      state,
+      estimate: 6,
+      completed: 1,
+    });
+    expect(saved.find((item) => item.id === 2484)?.completed).toBeUndefined();
+  },
+);
 it("bulk closure saves only selected My tasks and leaves unselected and hidden siblings unchanged", async () => {
   const existing = await demoRepository.listMine();
   const task = existing.find((item) => item.id === 2483)!;
@@ -787,6 +837,16 @@ it("loading and estimate edits keep completed hours unchanged; closing one task 
   expect(
     screen.getByLabelText("Build search form completed hours"),
   ).toHaveValue(null);
+  for (const state of ["New", "Active"]) {
+    await user.selectOptions(
+      screen.getByLabelText("Build search form state"),
+      state,
+    );
+    expect(
+      screen.getByLabelText("Build search form completed hours"),
+    ).toHaveValue(null);
+    expect(screen.getAllByText("Completed: 2h")[0]).toBeInTheDocument();
+  }
   await user.selectOptions(
     screen.getByLabelText("Build search form state"),
     "Closed",
