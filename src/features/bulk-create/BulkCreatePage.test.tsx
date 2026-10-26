@@ -201,3 +201,46 @@ it("shared task titles update existing and later stories while preserving indivi
     "Implement frontend screens",
   );
 });
+
+it("removes a shared task from existing and later standard stories", async () => {
+  const user = userEvent.setup();
+  setup();
+  await screen.findByRole("option", { name: "OMS" });
+  await user.selectOptions(screen.getByLabelText("Destination project"), "OMS");
+  const paste = await screen.findByLabelText("Paste SRS requirements");
+  await user.type(paste, "SRS.1 First story\nSRS.2 Second story");
+  await user.click(
+    screen.getByRole("button", { name: "Add 2 stories to batch" }),
+  );
+
+  await user.click(
+    screen.getByRole("button", {
+      name: /Remove shared task.*Frontend implementation/,
+    }),
+  );
+
+  expect(
+    screen.queryByLabelText("Shared title â€” Frontend implementation"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Story 1 task 9 title"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Story 2 task 9 title"),
+  ).not.toBeInTheDocument();
+  expect(screen.getAllByLabelText(/Story [12] task \d+ title/)).toHaveLength(
+    16,
+  );
+
+  await user.click(
+    screen.getByRole("button", { name: "Add more requirements" }),
+  );
+  await user.type(paste, "SRS.3 Third story");
+  await user.click(
+    screen.getByRole("button", { name: "Add 1 stories to batch" }),
+  );
+  expect(
+    screen.queryByLabelText("Story 3 task 9 title"),
+  ).not.toBeInTheDocument();
+  expect(screen.getAllByLabelText(/Story 3 task \d+ title/)).toHaveLength(8);
+});

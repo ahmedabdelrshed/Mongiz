@@ -1379,6 +1379,13 @@ legend {
 .shared-task-column h4 {
   color: var(--muted);
 }
+
+.default-task-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
 .shared-task-testing {
   grid-column: 1 / -1;
 }

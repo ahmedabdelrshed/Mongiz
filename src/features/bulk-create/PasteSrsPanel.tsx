@@ -1,13 +1,20 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Notice } from "../../shared/ui/Common";
-import { copyTasks, defaultTasks, type StoryDraft } from "./model";
+import {
+  copyTasks,
+  defaultTasks,
+  type DefaultTaskKey,
+  type StoryDraft,
+} from "./model";
 import { parseSrs, srsCode } from "./parseSrs";
 export function PasteSrsPanel({
   stories,
+  excludedDefaultTaskKeys = [],
   onAdd,
 }: {
   stories: StoryDraft[];
+  excludedDefaultTaskKeys?: readonly DefaultTaskKey[];
   onAdd: (items: StoryDraft[]) => void;
 }) {
   const [text, setText] = useState(""),
@@ -27,7 +34,7 @@ export function PasteSrsPanel({
         ...s,
         tasks:
           taskMode === "standard"
-            ? defaultTasks()
+            ? defaultTasks(excludedDefaultTaskKeys)
             : taskMode === "copy"
               ? copyTasks(stories[0]?.tasks ?? [])
               : [],

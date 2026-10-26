@@ -99,6 +99,7 @@ export const draftSchema = z.object({
   taskEstimates: z
     .partialRecord(defaultTaskKeySchema, z.number().finite().min(0).max(10000))
     .optional(),
+  excludedDefaultTaskKeys: z.array(defaultTaskKeySchema).optional(),
   destination: z.enum(["current", "backlog", "specific"]),
   iterationId: z.string(),
   stories: z.array(storySchema).min(1, "Add at least one story"),
@@ -169,15 +170,20 @@ export function effectiveAssignee(
     : undefined;
   return shared === undefined || shared === "inherit" ? draft.assignee : shared;
 }
-export function defaultTasks(): TaskDraft[] {
-  return defaultTaskDefinitions.map((t) => ({
-    ...newTask(),
-    title: t.title,
-    defaultTaskKey: t.key,
-    hours: t.hours,
-    inheritEstimate: true,
-    inheritTitle: true,
-  }));
+export function defaultTasks(
+  excluded: readonly DefaultTaskKey[] = [],
+): TaskDraft[] {
+  const excludedKeys = new Set(excluded);
+  return defaultTaskDefinitions
+    .filter((t) => !excludedKeys.has(t.key))
+    .map((t) => ({
+      ...newTask(),
+      title: t.title,
+      defaultTaskKey: t.key,
+      hours: t.hours,
+      inheritEstimate: true,
+      inheritTitle: true,
+    }));
 }
 export function effectiveTitle(
   task: TaskDraft,
