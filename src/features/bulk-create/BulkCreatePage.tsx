@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, Upload, ArrowRight, CheckCircle2 } from "lucide-react";
+import {
+  Plus,
+  Download,
+  Upload,
+  ArrowRight,
+  CheckCircle2,
+  Trash2,
+} from "lucide-react";
 import { useWorkspace } from "../../app/Workspace";
 import {
   BusyIndicator,
@@ -15,6 +22,7 @@ import {
   emptyDraft,
   isDraft,
   totals,
+  type DefaultTaskKey,
   type Draft,
   type Results,
 } from "./model";
@@ -150,6 +158,17 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
   const sharedTasks = useRef<HTMLDivElement>(null);
   const scrollAfterPaste = useRef(false);
   const features = meta.features.filter((f) => f.parentId === draft.epicId);
+  const removeSharedTask = (key: DefaultTaskKey) => {
+    if (locked) return;
+    change({
+      ...draft,
+      excludedDefaultTaskKeys: [...(draft.excludedDefaultTaskKeys ?? []), key],
+      stories: draft.stories.map((story) => ({
+        ...story,
+        tasks: story.tasks.filter((task) => task.defaultTaskKey !== key),
+      })),
+    });
+  };
   let iteration = "Choose destination";
   try {
     iteration = resolveIteration(draft, meta);
@@ -324,6 +343,7 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
           >
             <PasteSrsPanel
               stories={draft.stories}
+              excludedDefaultTaskKeys={draft.excludedDefaultTaskKeys}
               onAdd={(items) => {
                 scrollAfterPaste.current = true;
                 setPasteOpen(false);
@@ -457,71 +477,89 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
                 key={group.label}
               >
                 <h4>{group.label}</h4>
-                {group.tasks.map((t) => (
-                  <div className="default-task-setting" key={t.key}>
-                    <span>{t.label}</span>
-                    <input
-                      aria-label={`Shared title — ${t.label}`}
-                      disabled={locked}
-                      maxLength={255}
-                      value={draft.taskTitles?.[t.key] ?? t.title}
-                      onChange={(e) =>
-                        change({
-                          ...draft,
-                          taskTitles: {
-                            ...draft.taskTitles,
-                            [t.key]: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                    <div className="default-task-controls">
-                      <select
-                        aria-label={`Shared assignee — ${t.label}`}
+                {group.tasks
+                  .filter(
+                    (t) => !draft.excludedDefaultTaskKeys?.includes(t.key),
+                  )
+                  .map((t) => (
+                    <div className="default-task-setting" key={t.key}>
+                      <div className="default-task-heading">
+                        <span>{t.label}</span>
+                        <button
+                          type="button"
+                          className="icon danger"
+                          disabled={locked}
+                          aria-label={`Remove shared task — ${t.label}`}
+                          onClick={() => removeSharedTask(t.key)}
+                          title="Remove this task from every story in the batch"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                      <input
+                        aria-label={`Shared title — ${t.label}`}
                         disabled={locked}
-                        value={draft.taskAssignees?.[t.key] ?? "inherit"}
+                        maxLength={255}
+                        value={draft.taskTitles?.[t.key] ?? t.title}
                         onChange={(e) =>
                           change({
                             ...draft,
-                            taskAssignees: {
-                              ...draft.taskAssignees,
+                            taskTitles: {
+                              ...draft.taskTitles,
                               [t.key]: e.target.value,
                             },
                           })
                         }
-                      >
-                        <option value="inherit">Same as story assignee</option>
-                        <option value="">Unassigned</option>
-                        {meta.people.map((p) => (
-                          <option key={p.id} value={p.identity}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                      <label className="shared-hours">
-                        <input
-                          type="number"
-                          min="0"
-                          max="10000"
-                          step="0.1"
-                          aria-label={`Shared estimate — ${t.label}`}
+                      />
+                      <div className="default-task-controls">
+                        <select
+                          aria-label={`Shared assignee — ${t.label}`}
                           disabled={locked}
-                          value={draft.taskEstimates?.[t.key] ?? t.hours}
+                          value={draft.taskAssignees?.[t.key] ?? "inherit"}
                           onChange={(e) =>
                             change({
                               ...draft,
-                              taskEstimates: {
-                                ...draft.taskEstimates,
-                                [t.key]: Number(e.target.value) || 0,
+                              taskAssignees: {
+                                ...draft.taskAssignees,
+                                [t.key]: e.target.value,
                               },
                             })
                           }
-                        />
-                        h
-                      </label>
+                        >
+                          <option value="inherit">
+                            Same as story assignee
+                          </option>
+                          <option value="">Unassigned</option>
+                          {meta.people.map((p) => (
+                            <option key={p.id} value={p.identity}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="shared-hours">
+                          <input
+                            type="number"
+                            min="0"
+                            max="10000"
+                            step="0.1"
+                            aria-label={`Shared estimate — ${t.label}`}
+                            disabled={locked}
+                            value={draft.taskEstimates?.[t.key] ?? t.hours}
+                            onChange={(e) =>
+                              change({
+                                ...draft,
+                                taskEstimates: {
+                                  ...draft.taskEstimates,
+                                  [t.key]: Number(e.target.value) || 0,
+                                },
+                              })
+                            }
+                          />
+                          h
+                        </label>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </section>
             ))}
           </div>
