@@ -1,3 +1,4 @@
+import { playSound } from "../../shared/ui/sounds";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
@@ -347,6 +348,7 @@ function WorkList({
       }
     }
     setBusy(false);
+    playSound(failures.length ? "warning" : "success");
     if (failures.length)
       setError(
         `${saved} saved. Failed changes remain unsaved: ${failures.join(" · ")}.`,

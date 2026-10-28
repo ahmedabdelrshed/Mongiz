@@ -224,6 +224,7 @@ function ProjectStories({
         failures[story.id] = (error as Error).message;
       }
     }
+    playSound(Object.keys(failures).length ? "warning" : "success");
     setErrors(failures);
     setMessage(
       `Saved story points for ${saved} work item${saved === 1 ? "" : "s"}.${Object.keys(failures).length ? ` ${Object.keys(failures).length} failed; review the errors and retry.` : ""}`,
@@ -458,3 +459,4 @@ function ProjectStories({
     </div>
   );
 }
+import { playSound } from "../../shared/ui/sounds";
