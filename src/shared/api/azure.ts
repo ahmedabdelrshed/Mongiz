@@ -13,6 +13,7 @@ import {
   type Settings,
   type WorkLoadListener,
   type WorkItem,
+  type PullRequest,
 } from "./types";
 export class ApiError extends Error {
   constructor(
@@ -76,6 +77,62 @@ export class AzureRepository implements Repository {
   }
   parentUrl(id: number) {
     return `${this.base}/_apis/wit/workItems/${id}`;
+  }
+  async listPullRequests(project: string): Promise<PullRequest[]> {
+    const results: PullRequest[] = [];
+    const pageSize = 100;
+    for (let skip = 0; ; skip += pageSize) {
+      const page = await this.request<{
+        value: {
+          pullRequestId: number;
+          title: string;
+          artifactId: string;
+          repository: { name: string };
+        }[];
+      }>(
+        `${encodeURIComponent(project)}/_apis/git/pullrequests?searchCriteria.status=active&$top=${pageSize}&$skip=${skip}`,
+      );
+      results.push(
+        ...page.value.map((pr) => ({
+          id: pr.pullRequestId,
+          title: pr.title,
+          repository: pr.repository.name,
+          artifactId: pr.artifactId,
+        })),
+      );
+      if (page.value.length < pageSize) return results;
+    }
+  }
+  async linkPullRequest(item: WorkItem, pullRequest: PullRequest) {
+    const current = await this.request<RawItem>(
+      `_apis/wit/workitems/${item.id}?$expand=relations`,
+    );
+    const alreadyLinked =
+      current.relations?.some(
+        (relation) =>
+          relation.rel === "ArtifactLink" &&
+          relation.url.toLowerCase() === pullRequest.artifactId.toLowerCase(),
+      ) ?? false;
+    if (alreadyLinked)
+      return { item: { ...item, rev: current.rev }, alreadyLinked: true };
+    const updated = await this.request<RawItem>(
+      `_apis/wit/workitems/${item.id}`,
+      "PATCH",
+      [
+        { op: "test", path: "/rev", value: current.rev },
+        {
+          op: "add",
+          path: "/relations/-",
+          value: {
+            rel: "ArtifactLink",
+            url: pullRequest.artifactId,
+            attributes: { name: "Pull Request" },
+          },
+        },
+      ],
+      true,
+    );
+    return { item: { ...item, rev: updated.rev }, alreadyLinked: false };
   }
   private async response(
     path: string,

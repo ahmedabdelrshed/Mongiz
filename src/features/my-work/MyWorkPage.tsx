@@ -38,6 +38,7 @@ import { ProjectPicker } from "./ProjectPicker";
 import { VirtualWorkList } from "./VirtualWorkList";
 import { HoursPanel } from "./HoursPanel";
 import { CopyImplementationTasks } from "./CopyImplementationTasks";
+import { LinkPullRequest } from "./LinkPullRequest";
 import {
   DEFAULT_SPRINT_TARGET,
   isSprintTarget,
@@ -987,6 +988,7 @@ function WorkList({
               Apply to selected tasks
             </button>
             <CopyImplementationTasks tasks={pickedTasks} disabled={busy} />
+            <LinkPullRequest tasks={pickedTasks} disabled={busy} />
             <p className="muted">
               Shared estimates preserve tasks currently at{" "}
               {BULK_ESTIMATE_EXCLUDED_HOURS}h and tasks without an estimate.

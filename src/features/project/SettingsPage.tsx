@@ -203,7 +203,8 @@ export function SettingsPage() {
                 <li>Select your organization and an expiration date.</li>
                 <li>
                   Enable Work Items (Read &amp; write), Project and Team (Read),
-                  and Graph (Read) to list all project users.
+                  and Graph (Read) to list all project users. Add Code (Read) to
+                  select pull requests for linking tasks.
                 </li>
                 <li>
                   Copy the token, enter your organization name here, then click

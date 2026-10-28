@@ -30,8 +30,7 @@ export function isIterationCurrent(
   iteration: Pick<Iteration, "startDate" | "finishDate" | "current">,
   now = new Date(),
 ) {
-  if (!iteration.startDate || !iteration.finishDate)
-    return !!iteration.current;
+  if (!iteration.startDate || !iteration.finishDate) return !!iteration.current;
   const day = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const start = Date.parse(`${iteration.startDate.slice(0, 10)}T00:00:00Z`);
   const finish = Date.parse(`${iteration.finishDate.slice(0, 10)}T00:00:00Z`);
@@ -106,7 +105,18 @@ export interface WorkLoadProgress {
 }
 export type WorkLoadListener = (progress: WorkLoadProgress) => void;
 export type Patch = { op: "add" | "test"; path: string; value: unknown }[];
+export interface PullRequest {
+  id: number;
+  title: string;
+  repository: string;
+  artifactId: string;
+}
 export interface Repository {
+  listPullRequests?(project: string): Promise<PullRequest[]>;
+  linkPullRequest?(
+    item: WorkItem,
+    pullRequest: PullRequest,
+  ): Promise<{ item: WorkItem; alreadyLinked: boolean }>;
   projects(): Promise<Choice[]>;
   teams(project: string): Promise<Choice[]>;
   metadata(): Promise<Metadata>;

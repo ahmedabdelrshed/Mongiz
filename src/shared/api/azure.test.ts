@@ -13,6 +13,81 @@ const auth = {
   authorizationHeader: async () => "Bearer test-access-token",
 } as AuthSession;
 afterEach(() => vi.unstubAllGlobals());
+it("links a pull request once and uses the current work item revision", async () => {
+  const artifactId = "vstfs:///Git/PullRequestId/project%2frepo%2f42";
+  const item = {
+    id: 7,
+    rev: 1,
+    title: "Implement feature",
+    type: "Task",
+    state: "Active",
+    assignedTo: "",
+    iteration: "OMS",
+    parentId: 3,
+  };
+  const pr = { id: 42, title: "Feature", repository: "repo", artifactId };
+  let linked = false;
+  const fetcher = vi.fn(async (_url: string, options: RequestInit) => {
+    if (options.method === "PATCH") {
+      expect(JSON.parse(options.body as string)).toEqual([
+        { op: "test", path: "/rev", value: 3 },
+        {
+          op: "add",
+          path: "/relations/-",
+          value: {
+            rel: "ArtifactLink",
+            url: artifactId,
+            attributes: { name: "Pull Request" },
+          },
+        },
+      ]);
+      linked = true;
+      return new Response(JSON.stringify({ id: 7, rev: 4 }));
+    }
+    return new Response(
+      JSON.stringify({
+        id: 7,
+        rev: linked ? 4 : 3,
+        fields: {},
+        relations: linked ? [{ rel: "ArtifactLink", url: artifactId }] : [],
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const repo = new AzureRepository(settings, auth);
+  expect(await repo.linkPullRequest(item, pr)).toEqual({
+    item: { ...item, rev: 4 },
+    alreadyLinked: false,
+  });
+  expect(await repo.linkPullRequest(item, pr)).toEqual({
+    item: { ...item, rev: 4 },
+    alreadyLinked: true,
+  });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+it("loads all pages of active pull requests in the chosen project", async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/company/Project%20A/_apis/git/pullrequests");
+    expect(parsed.searchParams.get("searchCriteria.status")).toBe("active");
+    const count = parsed.searchParams.get("$skip") === "0" ? 100 : 1;
+    return new Response(
+      JSON.stringify({
+        value: Array.from({ length: count }, (_, i) => ({
+          pullRequestId: i + 1,
+          title: "PR",
+          artifactId: "artifact",
+          repository: { name: "repo" },
+        })),
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetcher);
+  expect(
+    await new AzureRepository(settings, auth).listPullRequests("Project A"),
+  ).toHaveLength(101);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it("loads the full project iteration tree, expanding truncated branches with encoded paths", async () => {
   const fetcher = vi.fn(async (url: string) => {
     const u = new URL(url);

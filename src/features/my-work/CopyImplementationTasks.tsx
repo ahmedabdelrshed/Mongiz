@@ -40,8 +40,8 @@ export function CopyImplementationTasks({
         aria-busy={copying}
         title={
           text
-            ? `Copy ${implementationTasks.length} selected implementation task IDs, separated by spaces, for your pull request.`
-            : "Select a task with implement or implementation in its title."
+            ? `Copy ${implementationTasks.length} selected implementation task IDs from the filtered list, separated by spaces, for your pull request.`
+            : "Select a visible task with implement or implementation in its title."
         }
         onClick={() => void copy()}
       >
@@ -51,8 +51,9 @@ export function CopyImplementationTasks({
       {copiedText && copiedText === text && (
         <p className="muted" role="status">
           Copied {implementationTasks.length} implementation{" "}
-          {implementationTasks.length === 1 ? "task" : "tasks"}. Paste into your
-          pull request description.
+          {implementationTasks.length === 1 ? "task" : "tasks"}. Only selected
+          tasks from the filtered list are included. Paste into your pull
+          request description.
         </p>
       )}
       <Modal
