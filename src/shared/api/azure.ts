@@ -318,10 +318,38 @@ export class AzureRepository implements Repository {
                 ?.workItemTypes?.map((t) => t.name) ?? []),
             ]),
           ];
+          const bugTypes = categoryTypes(
+            "Microsoft.BugCategory",
+            category("Microsoft.BugCategory") ?? "Bug",
+          );
+          const typeStates: Record<string, string[]> = {};
+          for (const type of bugTypes) {
+            try {
+              const bugDetail = await repo.request<{
+                states: { name: string }[];
+              }>(
+                `${encodeURIComponent(project.id)}/_apis/wit/workitemtypes/${encodeURIComponent(type)}`,
+              );
+              typeStates[type] = bugDetail.states.map((state) => state.name);
+            } catch (error) {
+              warnings.push(
+                `${project.name}: Could not load states for ${type}. ${(error as Error).message}`,
+              );
+            }
+          }
           const config: ProjectWorkConfig = {
+            typeStates,
             storyTypes: categoryTypes(
               "Microsoft.RequirementCategory",
               storyType,
+            ).concat(
+              bugTypes.filter(
+                (type) =>
+                  !categoryTypes(
+                    "Microsoft.RequirementCategory",
+                    storyType,
+                  ).includes(type),
+              ),
             ),
             taskTypes: categoryTypes("Microsoft.TaskCategory", taskType),
             storyPointField: storyPointFields.find((key) =>
@@ -771,8 +799,10 @@ export class AzureRepository implements Repository {
     const isStory = (x: RawItem) => {
       const config = configFor(x);
       return (
-        config?.storyTypes ?? [config?.storyType ?? this.storyType]
-      ).includes(x.fields["System.WorkItemType"]);
+        (config?.storyTypes ?? [config?.storyType ?? this.storyType]).includes(
+          x.fields["System.WorkItemType"],
+        ) || x.fields["System.WorkItemType"] === "Bug"
+      );
     };
     const asWorkItem = (item: RawItem): WorkItem => {
       const mappedItem = mapped(item);
@@ -886,7 +916,6 @@ export class AzureRepository implements Repository {
   }
   async update(item: WorkItem, values: Record<string, unknown>) {
     const patch: Patch = [
-      { op: "test", path: "/rev", value: item.rev },
       ...Object.entries(values).map(([name, value]) => ({
         op: "add" as const,
         path: `/fields/${name}`,

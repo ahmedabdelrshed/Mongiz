@@ -62,6 +62,7 @@ import {
   patchValues,
   stage,
   stageState,
+  stageStoryClosure,
   type Edits,
 } from "./edits";
 interface DraftProps {
@@ -257,7 +258,32 @@ function WorkList({
         [...(w.hours.data ?? []), ...loadedItems].map((i) => [i.id, i]),
       ).values(),
     ];
-    const snapshot = Object.entries(edits);
+    if (
+      (query.isFetching || query.error) &&
+      Object.entries(edits).some(([id, entry]) => {
+        const item = items.find((candidate) => candidate.id === Number(id));
+        return (
+          item &&
+          (item.isStory ?? item.type === w.meta?.storyType) &&
+          entry.values["System.State"] === "Closed"
+        );
+      })
+    ) {
+      setError(
+        "Wait for work items to finish loading successfully before closing a story.",
+      );
+      return;
+    }
+    const snapshot = Object.entries(edits).sort(([a], [b]) => {
+      const first = items.find((item) => item.id === Number(a));
+      const second = items.find((item) => item.id === Number(b));
+      return (
+        Number(!!first && (first.isStory ?? first.type === w.meta?.storyType)) -
+        Number(
+          !!second && (second.isStory ?? second.type === w.meta?.storyType),
+        )
+      );
+    });
     const prepared: { item: WorkItem; values: Record<string, unknown> }[] = [];
     try {
       for (const [id, entry] of snapshot) {
@@ -280,8 +306,19 @@ function WorkList({
     setMessage("");
     const failures: string[] = [];
     let saved = 0;
+    const failedIds = new Set<number>();
     for (const change of prepared) {
       try {
+        if (
+          change.values["System.State"] === "Closed" &&
+          items.some(
+            (item) =>
+              item.parentId === change.item.id && failedIds.has(item.id),
+          )
+        )
+          throw new Error(
+            "A child task failed to close; the parent was not closed.",
+          );
         const response = await w.repo.update(change.item, change.values);
         const updated = {
           ...change.item,
@@ -304,13 +341,14 @@ function WorkList({
         });
         saved++;
       } catch (e) {
+        failedIds.add(change.item.id);
         failures.push(`#${change.item.id}: ${(e as Error).message}`);
       }
     }
     setBusy(false);
     if (failures.length)
       setError(
-        `${saved} saved. Failed changes remain unsaved: ${failures.join(" · ")}. If Azure reports a conflict, discard and refresh before editing again.`,
+        `${saved} saved. Failed changes remain unsaved: ${failures.join(" · ")}.`,
       );
     else setMessage(`Saved changes to ${saved} work items.`);
   };
@@ -442,26 +480,28 @@ function WorkList({
   const change = (item: WorkItem, values: Record<string, string | number>) => {
     setMessage("");
     setError("");
-    setEdits((previous) =>
-      values["System.State"] !== undefined &&
-      !(item.isStory ?? item.type === w.meta!.storyType)
-        ? stageState(
-            items,
-            previous,
-            item,
-            String(values["System.State"]),
-            w.meta!.projectConfigs?.[item.project ?? ""]?.taskFields ??
-              w.meta!.taskFields,
-          )
-        : stage(
-            items,
-            previous,
-            item.id,
-            values,
-            w.meta!.projectConfigs?.[item.project ?? ""]?.taskFields ??
-              w.meta!.taskFields,
-          ),
-    );
+    try {
+      const story = item.isStory ?? item.type === w.meta!.storyType;
+      if (
+        story &&
+        values["System.State"] === "Closed" &&
+        (query.isFetching || query.error)
+      )
+        throw new Error(
+          "Wait for work items to finish loading successfully before closing a story.",
+        );
+      const supported = (child: WorkItem) =>
+        configFor(child)?.taskFields ?? w.meta!.taskFields;
+      const states = (child: WorkItem) =>
+        configFor(child)?.taskStates ?? w.meta!.taskStates;
+      const next =
+        story && values["System.State"] === "Closed"
+          ? stageStoryClosure(items, edits, item, supported, states)
+          : stage(items, edits, item.id, values, story ? [] : supported(item));
+      setEdits(next);
+    } catch (error) {
+      setError((error as Error).message);
+    }
   };
   const visibleTasks = groups.flatMap((g) => g.tasks);
   const visibleStories = groups.flatMap((g) => (g.story ? [g.story] : []));
@@ -548,7 +588,10 @@ function WorkList({
     );
   const statesFor = (item: WorkItem, story: boolean) =>
     story
-      ? (configFor(item)?.storyStates ?? w.meta!.storyStates ?? [])
+      ? (configFor(item)?.typeStates?.[item.type] ??
+        configFor(item)?.storyStates ??
+        w.meta!.storyStates ??
+        [])
       : (configFor(item)?.taskStates ?? w.meta!.taskStates);
   const commonStates = (list: WorkItem[], story: boolean) =>
     list.length
@@ -559,6 +602,12 @@ function WorkList({
   const applyBulk = (story: boolean) => {
     const list = story ? pickedStories : pickedTasks;
     const state = story ? storyState : taskState;
+    if (story && state === "Closed" && (query.isFetching || query.error)) {
+      setError(
+        "Wait for work items to finish loading successfully before closing a story.",
+      );
+      return;
+    }
     const number = story ? bulkPoints : bulkEstimate;
     if (
       number !== "" &&
@@ -591,19 +640,25 @@ function WorkList({
     });
     const changed = changes.filter((c) => Object.keys(c.values).length).length;
     const skipped = changes.filter((c) => c.skipped).length;
-    setEdits((previous) =>
-      changes.reduce((next, { item, values: requested }) => {
-        if (!Object.keys(requested).length) return next;
-        const values = { ...requested };
+    try {
+      let next = edits;
+      for (const { item, values } of changes) {
         const supported = configFor(item)?.taskFields ?? w.meta!.taskFields;
-        if (!story && state) {
-          delete values["System.State"];
-          next = stage(items, next, item.id, values, supported);
-          return stageState(items, next, item, state, supported);
-        }
-        return stage(items, next, item.id, values, story ? [] : supported);
-      }, previous),
-    );
+        next = stage(items, next, item.id, values, story ? [] : supported);
+        if (story && values["System.State"] === "Closed")
+          next = stageStoryClosure(
+            items,
+            next,
+            item,
+            (child) => configFor(child)?.taskFields ?? w.meta!.taskFields,
+            (child) => configFor(child)?.taskStates ?? w.meta!.taskStates,
+          );
+      }
+      setEdits(next);
+    } catch (error) {
+      setError((error as Error).message);
+      return;
+    }
     setError("");
     setMessage(
       `${changed} selected ${story ? "stories" : "tasks"} staged. ${skipped ? `${skipped} skipped for the numeric change. ` : ""}Click Save changes to apply.`,
@@ -744,7 +799,7 @@ function WorkList({
           <Notice compact label={`${count} unsaved work items`}>
             {count} work items have unsaved changes. They are kept in this
             browser if you navigate away. Refresh preserves these edits; Save
-            checks Azure revisions.
+            may overwrite newer values in the edited fields.
           </Notice>
         )}
       </div>

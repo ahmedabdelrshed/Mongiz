@@ -174,7 +174,7 @@ it("reports inaccessible and incomplete iteration trees instead of offering part
   ).rejects.toThrow(/Could not load child iterations/);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
-it("updates an iteration through the organization repository with revision protection", async () => {
+it("updates an iteration without requiring the loaded revision", async () => {
   const fetcher = vi.fn(
     async () =>
       new Response(
@@ -210,7 +210,6 @@ it("updates an iteration through the organization repository with revision prote
     "https://dev.azure.com/company/_apis/wit/workitems/1?api-version=7.1",
   );
   expect(JSON.parse(options!.body as string)).toEqual([
-    { op: "test", path: "/rev", value: 7 },
     { op: "add", path: "/fields/System.IterationPath", value: "OMS\\Next" },
   ]);
 });
@@ -729,6 +728,7 @@ it("reads every type in task and requirement categories, not just the defaults",
   expect(metadata.projectConfigs?.OMS.storyTypes).toEqual([
     "User Story",
     "SRS Story",
+    "Bug",
   ]);
 });
 it("queries every project directly with progress and includes non-default types", async () => {
@@ -813,4 +813,37 @@ it("queries every project directly with progress and includes non-default types"
     ["OMS", 1],
     ["Platform", 2],
   ]);
+});
+
+it("includes bugs as work items even when they are outside the requirement category", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(
+            url.includes("/wiql")
+              ? { workItems: [{ id: 7 }] }
+              : {
+                  value: [
+                    {
+                      id: 7,
+                      rev: 1,
+                      fields: {
+                        "System.TeamProject": "OMS",
+                        "System.WorkItemType": "Bug",
+                        "System.Title": "Defect",
+                        "System.State": "Active",
+                        "System.IterationPath": "OMS",
+                      },
+                    },
+                  ],
+                },
+          ),
+        ),
+    ),
+  );
+  const items = await new AzureRepository(settings, auth).listMine("all");
+  expect(items).toHaveLength(1);
+  expect(items[0]).toMatchObject({ type: "Bug", isStory: true });
 });
