@@ -43,7 +43,9 @@ export interface ParentItem extends Choice {
 }
 export interface ProjectWorkConfig {
   storyTypes?: string[];
+  bugTypes?: string[];
   typeStates?: Record<string, string[]>;
+  typeStoryPointFields?: Record<string, string | undefined>;
   taskTypes?: string[];
   storyPointField?: string;
   storyStates?: string[];

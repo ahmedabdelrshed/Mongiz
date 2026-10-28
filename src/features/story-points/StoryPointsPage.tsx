@@ -32,7 +32,7 @@ function ProjectPage() {
     <>
       <PageTitle
         title="Story points"
-        subtitle="Find unestimated stories and assign story points for any project."
+        subtitle="Find stories and bugs and assign story points for any project."
       />
       <section className="move-panel project-scope">
         <label>
@@ -52,8 +52,8 @@ function ProjectPage() {
           </select>
         </label>
         <p className="muted">
-          Stories from all assignees are included. A value of 0 counts as
-          estimated.
+          Stories and bugs from all assignees are included. A value of 0 counts
+          as estimated.
         </p>
       </section>
       {!w.projects.length &&
@@ -69,9 +69,7 @@ function ProjectPage() {
       {project ? (
         <ProjectStories key={project.id} project={project} onBusy={setBusy} />
       ) : (
-        <Empty title="Choose a project">
-          Load its stories without story points.
-        </Empty>
+        <Empty title="Choose a project">Load its stories and bugs.</Empty>
       )}
     </>
   );
@@ -88,11 +86,13 @@ function ProjectStories({
   const [search, setSearch] = useState("");
   const [states, setStates] = useState(["all"]);
   const [sprints, setSprints] = useState(["all"]);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [estimateFilter, setEstimateFilter] = useState("unestimated");
+  const [shared, setShared] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [savingId, setSavingId] = useState<number>();
   const operation = useRef(false);
   const prefix = [w.scope, project.id];
   const metadata = useQuery({
@@ -122,15 +122,25 @@ function ProjectStories({
     onBusy(busy);
   }, [busy, onBusy]);
   useEffect(() => () => onBusy(false), [onBusy]);
-  const config = metadata.data?.projectConfigs?.[project.name] ?? metadata.data;
+  const projectConfig = metadata.data?.projectConfigs?.[project.name];
+  const config = projectConfig ?? metadata.data;
   const stories = config
     ? (items.data ?? []).filter(
-        (item) => item.project === project.name && isStory(item, config),
+        (item) =>
+          item.project === project.name &&
+          (isStory(item, config) ||
+            (projectConfig?.bugTypes ?? ["Bug"]).includes(item.type)),
       )
     : [];
   const unestimated = stories.filter((item) => item.storyPoints == null);
-  const shown = unestimated.filter(
+  const isBug = (item: WorkItem) =>
+    (projectConfig?.bugTypes ?? ["Bug"]).includes(item.type);
+  const filteredByEstimate =
+    estimateFilter === "unestimated" ? unestimated : stories;
+  const shown = filteredByEstimate.filter(
     (item) =>
+      (typeFilter === "all" ||
+        (typeFilter === "bugs" ? isBug(item) : !isBug(item))) &&
       (states.includes("all") || states.includes(item.state)) &&
       (sprints.includes("all") || sprints.includes(item.iteration)) &&
       (item.title.toLowerCase().includes(search.trim().toLowerCase()) ||
@@ -149,7 +159,10 @@ function ProjectStories({
     ]),
   ].sort();
   const fieldFor = (item: WorkItem) =>
-    item.storyPointField ?? config?.storyPointField;
+    projectConfig?.typeStoryPointFields &&
+    item.type in projectConfig.typeStoryPointFields
+      ? projectConfig.typeStoryPointFields[item.type]
+      : (item.storyPointField ?? config?.storyPointField);
   const loadError = metadata.error ?? iterations.error ?? items.error;
   const loading = metadata.isPending || iterations.isPending || items.isPending;
 
@@ -167,57 +180,61 @@ function ProjectStories({
       setBusy(false);
     }
   };
-  const save = async (story: WorkItem) => {
+  const applyShared = () => {
+    if (!shared.trim()) return;
+    setDrafts((previous) => {
+      const next = { ...previous };
+      for (const item of shown) if (fieldFor(item)) next[item.id] = shared;
+      return next;
+    });
+    setErrors({});
+  };
+  const save = async () => {
     if (operation.current) return;
-    setMessage("");
-    try {
-      const field = fieldFor(story);
-      if (!field)
-        throw new Error("This story type has no supported story point field.");
-      const value = drafts[story.id] ?? "";
-      if (!value.trim())
-        throw new Error("Enter story points between 0 and 10,000.");
-      const values = patchValues({ [field]: value });
-      const pending = readStored(
-        storageKey(w.scope, "work-edits"),
-        {},
-        isEdits,
-      );
-      if (pending[story.id])
-        throw new Error(
-          "Save or discard this story's unsaved My work edits before assigning points.",
-        );
-      operation.current = true;
-      setBusy(true);
-      setSavingId(story.id);
-      const updated = await w.repo.update(story, values);
-      w.replaceWorkItem({ ...story, ...updated, storyPointField: field });
-      setDrafts((previous) => {
-        const next = { ...previous };
-        delete next[story.id];
-        return next;
-      });
-      setErrors((previous) => {
-        const next = { ...previous };
-        delete next[story.id];
-        return next;
-      });
-      setMessage(`Saved ${value} story points for #${story.id}.`);
-    } catch (error) {
-      setErrors((previous) => ({
-        ...previous,
-        [story.id]: (error as Error).message,
-      }));
-    } finally {
-      operation.current = false;
-      setBusy(false);
-      setSavingId(undefined);
+    const targets = stories.filter((item) => drafts[item.id] !== undefined);
+    if (!targets.length) {
+      setMessage("No story points to save.");
+      return;
     }
+    operation.current = true;
+    setBusy(true);
+    setMessage("");
+    const pending = readStored(storageKey(w.scope, "work-edits"), {}, isEdits);
+    const failures: Record<number, string> = {};
+    let saved = 0;
+    for (const story of targets) {
+      try {
+        const field = fieldFor(story);
+        if (!field)
+          throw new Error("This work item has no supported story point field.");
+        if (pending[story.id])
+          throw new Error(
+            "Save or discard this item's unsaved My work edits before assigning points.",
+          );
+        const values = patchValues({ [field]: drafts[story.id] });
+        const updated = await w.repo.update(story, values);
+        w.replaceWorkItem({ ...story, ...updated, storyPointField: field });
+        setDrafts((previous) => {
+          const next = { ...previous };
+          delete next[story.id];
+          return next;
+        });
+        saved++;
+      } catch (error) {
+        failures[story.id] = (error as Error).message;
+      }
+    }
+    setErrors(failures);
+    setMessage(
+      `Saved story points for ${saved} work item${saved === 1 ? "" : "s"}.${Object.keys(failures).length ? ` ${Object.keys(failures).length} failed; review the errors and retry.` : ""}`,
+    );
+    operation.current = false;
+    setBusy(false);
   };
   return (
     <div className="move-stories story-points">
       <div className="move-toolbar">
-        <h2>{project.name} unestimated stories</h2>
+        <h2>{project.name} stories and bugs</h2>
         <button
           disabled={busy || (loading && !loadError)}
           onClick={() => void refresh()}
@@ -240,15 +257,37 @@ function ProjectStories({
           {!!metadata.data?.warnings.length && (
             <Notice>{metadata.data.warnings.join(" · ")}</Notice>
           )}
-          {!config?.storyPointField &&
-            unestimated.some((item) => !fieldFor(item)) && (
-              <Notice>
-                This project has stories without a supported story point field.
-                Estimation is unavailable for those stories.
-              </Notice>
-            )}
+          {stories.some((item) => !fieldFor(item)) && (
+            <Notice>
+              Some work items have no supported story point field and cannot be
+              estimated.
+            </Notice>
+          )}
           <fieldset className="move-controls" disabled={busy}>
-            <legend>Filter unestimated stories</legend>
+            <legend>Filter work items</legend>
+            <label>
+              Work item type
+              <select
+                aria-label="Filter work item type"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+              >
+                <option value="all">Stories and bugs</option>
+                <option value="stories">User stories</option>
+                <option value="bugs">Bugs</option>
+              </select>
+            </label>
+            <label>
+              Estimate status
+              <select
+                aria-label="Filter estimate status"
+                value={estimateFilter}
+                onChange={(e) => setEstimateFilter(e.target.value)}
+              >
+                <option value="unestimated">Unestimated</option>
+                <option value="all">All estimates</option>
+              </select>
+            </label>
             <label>
               Search stories
               <input
@@ -294,32 +333,62 @@ function ProjectStories({
             </label>
           </fieldset>
           <section className="move-panel" aria-label="Unestimated stories">
+            <div className="move-controls">
+              <label>
+                Shared story points
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="any"
+                  aria-label="Shared story points"
+                  value={shared}
+                  disabled={busy}
+                  onChange={(e) => setShared(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy || !shared.trim() || !shown.length}
+                onClick={applyShared}
+              >
+                Apply to shown items
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={busy || !Object.keys(drafts).length}
+                onClick={() => void save()}
+              >
+                {busy && <BusyIndicator />}
+                {busy ? "Saving?" : "Save story points"}
+              </button>
+            </div>
+            <p className="muted">
+              Apply sets the value on shown items. Save updates all entered
+              values, including items hidden by filters.
+            </p>
             <p className="muted" role="status">
-              Showing {shown.length} of {unestimated.length} unestimated stories
+              Showing {shown.length} of {filteredByEstimate.length} work items
             </p>
             {!shown.length && (
               <Empty
                 title={
-                  unestimated.length
-                    ? "No matching stories"
-                    : "All stories have story points"
+                  filteredByEstimate.length
+                    ? "No matching work items"
+                    : "No work items to estimate"
                 }
               >
-                {unestimated.length
+                {filteredByEstimate.length
                   ? "Change your search or filters."
-                  : "No unestimated stories remain in this project."}
+                  : "No matching stories or bugs remain in this project."}
               </Empty>
             )}
             {shown.map((story) => (
-              <form
+              <div
                 className="story-point-row"
                 key={story.id}
                 aria-label={`Estimate story #${story.id}`}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void save(story);
-                }}
-                noValidate
               >
                 <div className="story-point-summary">
                   <strong>
@@ -351,7 +420,12 @@ function ProjectStories({
                         ? `story-point-error-${story.id}`
                         : undefined
                     }
-                    value={drafts[story.id] ?? ""}
+                    value={
+                      drafts[story.id] ??
+                      (story.storyPoints == null
+                        ? ""
+                        : String(story.storyPoints))
+                    }
                     disabled={busy || !fieldFor(story)}
                     onChange={(e) => {
                       setDrafts((previous) => ({
@@ -366,16 +440,6 @@ function ProjectStories({
                     }}
                   />
                 </label>
-                <button
-                  className="primary"
-                  type="submit"
-                  aria-label={`Save story points for #${story.id}`}
-                  aria-busy={savingId === story.id}
-                  disabled={busy || !fieldFor(story)}
-                >
-                  {savingId === story.id && <BusyIndicator />}
-                  {savingId === story.id ? "Saving…" : "Save"}
-                </button>
                 {errors[story.id] && (
                   <div
                     className="story-point-error"
@@ -386,7 +450,7 @@ function ProjectStories({
                     </Notice>
                   </div>
                 )}
-              </form>
+              </div>
             ))}
           </section>
         </>

@@ -18,6 +18,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("filters stories, bugs and tasks separately while showing each task's parent", async () => {
+  const existing = await demoRepository.listMine();
+  const story = existing.find((item) => item.id === 2481)!;
+  const task = existing.find((item) => item.id === 2482)!;
+  localStorage.setItem("taskflow:v1:demo:workitems", JSON.stringify([
+    ...existing,
+    { ...story, id: 9001, type: "Bug", title: "Search defect", assignedTo: task.assignedTo, iteration: task.iteration },
+    { ...task, id: 9002, parentId: 9001, title: "Fix defect" },
+  ]));
+  const user = userEvent.setup();
+  setup();
+  await screen.findByLabelText("Build search form state");
+  await chooseFilter(user, "Filter work item type", "Tasks");
+  expect(screen.getAllByText(/User Story #2481:/).length).toBeGreaterThan(0);
+  expect(screen.getByText("Bug #9001: Search defect")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Select story: Search defect")).not.toBeInTheDocument();
+  await chooseFilter(user, "Filter work item type", "All work item types");
+  await chooseFilter(user, "Filter work item type", "Bugs");
+  expect(screen.getByLabelText("Select story: Search defect")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Fix defect state")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Select story: Search device history")).not.toBeInTheDocument();
+  await chooseFilter(user, "Filter work item type", "All work item types");
+  await chooseFilter(user, "Filter work item type", "User stories");
+  expect(screen.queryByLabelText("Select story: Search defect")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Build search form state")).not.toBeInTheDocument();
+});
+
 it("copies only selected implementation tasks for a PR and preserves drafts and selection", async () => {
   const existing = await demoRepository.listMine();
   const base = existing.find((item) => item.type === "Task")!;

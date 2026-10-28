@@ -323,15 +323,21 @@ export class AzureRepository implements Repository {
             category("Microsoft.BugCategory") ?? "Bug",
           );
           const typeStates: Record<string, string[]> = {};
+          const typeStoryPointFields: Record<string, string | undefined> = {};
           for (const type of bugTypes) {
             try {
               const bugDetail = await repo.request<{
                 states: { name: string }[];
+                fields?: { referenceName: string }[];
               }>(
                 `${encodeURIComponent(project.id)}/_apis/wit/workitemtypes/${encodeURIComponent(type)}`,
               );
               typeStates[type] = bugDetail.states.map((state) => state.name);
+              typeStoryPointFields[type] = storyPointFields.find((key) =>
+                bugDetail.fields?.some((field) => field.referenceName === key),
+              );
             } catch (error) {
+              typeStoryPointFields[type] = undefined;
               warnings.push(
                 `${project.name}: Could not load states for ${type}. ${(error as Error).message}`,
               );
@@ -339,6 +345,8 @@ export class AzureRepository implements Repository {
           }
           const config: ProjectWorkConfig = {
             typeStates,
+            typeStoryPointFields,
+            bugTypes,
             storyTypes: categoryTypes(
               "Microsoft.RequirementCategory",
               storyType,
@@ -793,8 +801,13 @@ export class AzureRepository implements Repository {
     const isTask = (x: RawItem) => {
       const config = configFor(x);
       return (
-        config?.taskTypes ?? [config?.taskType ?? this.taskType]
-      ).includes(x.fields["System.WorkItemType"]);
+        !(config?.bugTypes ?? ["Bug"]).includes(
+          x.fields["System.WorkItemType"],
+        ) &&
+        (config?.taskTypes ?? [config?.taskType ?? this.taskType]).includes(
+          x.fields["System.WorkItemType"],
+        )
+      );
     };
     const isStory = (x: RawItem) => {
       const config = configFor(x);

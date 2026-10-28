@@ -87,4 +87,12 @@ describe("work search", () => {
     expect(group("history", undefined, [])).toEqual([]);
     expect(group("frontend", undefined, [12])).toEqual([]);
   });
+  it("keeps parent context for task-only results and omits tasks for parent-only results", () => {
+    expect(groupWorkItems({ stories: [story], tasks, search: "frontend", matchesFilters: () => true, includeStory: () => false })).toEqual([
+      { story, tasks: [tasks[0]], contextOnly: true },
+    ]);
+    expect(groupWorkItems({ stories: [story], tasks, search: "", matchesFilters: () => true, includeTasks: false })).toEqual([
+      { story, tasks: [] },
+    ]);
+  });
 });
