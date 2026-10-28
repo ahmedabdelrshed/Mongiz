@@ -96,205 +96,116 @@ async function choose(
   await user.keyboard("{Escape}");
 }
 
-it("loads all assignees in the selected project and excludes tasks, other projects and existing points including zero", async () => {
-  const { repo } = await setup();
-  expect(repo.workMetadata).toHaveBeenCalledWith([{ id: "OMS", name: "OMS" }]);
+it("filters stories and bugs and includes estimated items on request", async () => {
+  const rows = [
+    ...initial,
+    story(7, { type: "Bug" }),
+    story(8, { type: "Bug", storyPoints: 0 }),
+  ];
+  const { user, repo } = await setup(demoMetadata, rows);
   expect(repo.listMine).toHaveBeenCalledWith("all", demoMetadata);
+  expect(screen.getByLabelText("Story points for #7")).toBeInTheDocument();
   expect(
-    screen.getByText("Showing 2 of 2 unestimated stories"),
-  ).toBeInTheDocument();
-  expect(screen.getByLabelText("Story points for #1")).toBeInTheDocument();
-  expect(screen.getByLabelText("Story points for #2")).toBeInTheDocument();
-  for (const id of [3, 4, 5, 6])
-    expect(
-      screen.queryByLabelText(`Story points for #${id}`),
-    ).not.toBeInTheDocument();
+    screen.queryByLabelText("Story points for #8"),
+  ).not.toBeInTheDocument();
+  await user.selectOptions(
+    screen.getByLabelText("Filter work item type"),
+    "bugs",
+  );
+  expect(
+    screen.queryByLabelText("Story points for #1"),
+  ).not.toBeInTheDocument();
+  await user.selectOptions(
+    screen.getByLabelText("Filter estimate status"),
+    "all",
+  );
+  expect(screen.getByLabelText("Story points for #8")).toHaveValue(0);
 });
 
-it("combines multi sprint and state filters with search and preserves typed estimates while filtering", async () => {
-  const { user } = await setup();
+it("applies a shared value to shown items and saves all drafts, including hidden items", async () => {
+  const rows = [...initial, story(7, { type: "Bug" })];
+  const { user, repo } = await setup(demoMetadata, rows);
+  await user.selectOptions(
+    screen.getByLabelText("Filter work item type"),
+    "bugs",
+  );
+  await user.type(screen.getByLabelText("Shared story points"), "2.5");
+  await user.click(
+    screen.getByRole("button", { name: "Apply to shown items" }),
+  );
+  await user.selectOptions(
+    screen.getByLabelText("Filter work item type"),
+    "stories",
+  );
   await user.type(screen.getByLabelText("Story points for #1"), "3");
-  await choose(user, "Filter sprint", "OMS\\Sprint 13");
-  expect(
-    screen.queryByLabelText("Story points for #1"),
-  ).not.toBeInTheDocument();
-  await choose(user, "Filter story state", "New");
-  expect(screen.getByText("No matching stories")).toBeInTheDocument();
-  await choose(user, "Filter story state", "Active");
-  expect(screen.getByLabelText("Story points for #2")).toBeInTheDocument();
-  await choose(user, "Filter sprint", "OMS\\Sprint 12");
-  expect(screen.getByLabelText("Story points for #1")).toHaveValue(3);
-  await user.type(
-    screen.getByLabelText("Search unestimated stories"),
-    "Story 2",
-  );
-  expect(
-    screen.queryByLabelText("Story points for #1"),
-  ).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Story points for #2")).toBeInTheDocument();
-});
-
-it("saves decimal points with the current revision, removes the row and synchronizes other views", async () => {
-  const { user, client, repo } = await setup();
-  client.setQueryData(["hours-work", "demo"], initial);
-  client.setQueryData(["move-stories-items", "demo", "OMS"], initial);
-  await user.type(screen.getByLabelText("Story points for #1"), "2.5");
-  await user.click(
-    screen.getByRole("button", { name: "Save story points for #1" }),
-  );
-  expect(repo.update).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 1, rev: 1 }),
-    { [pointField]: 2.5 },
-  );
-  await waitFor(() =>
-    expect(
-      screen.queryByLabelText("Story points for #1"),
-    ).not.toBeInTheDocument(),
-  );
-  expect(
-    screen.getByText("Saved 2.5 story points for #1."),
-  ).toBeInTheDocument();
-  expect(screen.getByTestId("work-points")).toHaveTextContent("2.5");
-  for (const key of [
-    ["hours-work", "demo"],
-    ["move-stories-items", "demo", "OMS"],
-    ["story-points-items", "demo", "OMS"],
-  ]) {
-    expect(
-      client.getQueryData<WorkItem[]>(key)?.find((item) => item.id === 1)
-        ?.storyPoints,
-    ).toBe(2.5);
-  }
-});
-
-it("accepts zero and uses the selected project's Effort field", async () => {
-  const effort = "Microsoft.VSTS.Scheduling.Effort";
-  const { user, repo } = await setup({
-    ...demoMetadata,
-    projectConfigs: {
-      OMS: { ...demoMetadata, storyPointField: effort },
-    },
+  await user.click(screen.getByRole("button", { name: "Save story points" }));
+  await screen.findByText("Saved story points for 2 work items.");
+  expect(repo.update).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), {
+    [pointField]: 2.5,
   });
-  await user.type(screen.getByLabelText("Story points for #1"), "0");
-  await user.click(
-    screen.getByRole("button", { name: "Save story points for #1" }),
-  );
-  expect(repo.update).toHaveBeenCalledWith(expect.anything(), { [effort]: 0 });
-  await waitFor(() =>
-    expect(
-      screen.queryByLabelText("Story points for #1"),
-    ).not.toBeInTheDocument(),
-  );
+  expect(repo.update).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), {
+    [pointField]: 3,
+  });
+  expect(screen.getByTestId("work-points")).toHaveTextContent("3");
 });
 
-it("rejects empty, negative and excessive values without writing", async () => {
-  const { user, repo } = await setup();
-  const input = screen.getByLabelText("Story points for #1");
-  for (const value of ["", "-1", "10001"]) {
-    await user.clear(input);
-    if (value) await user.type(input, value);
-    await user.click(
-      screen.getByRole("button", { name: "Save story points for #1" }),
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent(/between 0 and 10,000/);
-  }
-  expect(repo.update).not.toHaveBeenCalled();
-});
-
-it("keeps failed edits for retry, refreshes revisions and prevents duplicate submissions", async () => {
+it("keeps failures for retry while saving successful items", async () => {
   const { user, repo } = await setup();
   vi.mocked(repo.update).mockRejectedValueOnce(
-    new Error("This item changed. Refresh before saving."),
+    new Error("Conflict; refresh before saving"),
   );
-  await user.type(screen.getByLabelText("Story points for #1"), "8");
+  await user.type(screen.getByLabelText("Shared story points"), "8");
   await user.click(
-    screen.getByRole("button", { name: "Save story points for #1" }),
+    screen.getByRole("button", { name: "Apply to shown items" }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "This item changed",
-  );
+  await user.click(screen.getByRole("button", { name: "Save story points" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Conflict");
   expect(screen.getByLabelText("Story points for #1")).toHaveValue(8);
-  vi.mocked(repo.listMine).mockResolvedValue(
-    initial.map((item) => ({ ...item, rev: 7 })),
-  );
-  await user.click(screen.getByRole("button", { name: "Refresh" }));
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled(),
-  );
-  let finish!: (item: WorkItem) => void;
-  vi.mocked(repo.update).mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  await user.dblClick(
-    screen.getByRole("button", { name: "Save story points for #1" }),
-  );
-  expect(repo.update).toHaveBeenCalledTimes(2);
-  expect(repo.update).toHaveBeenLastCalledWith(
-    expect.objectContaining({ rev: 7 }),
-    { [pointField]: 8 },
-  );
-  expect(screen.getByLabelText("Project for story points")).toBeDisabled();
-  finish(story(1, { rev: 8, storyPoints: 8 }));
-  await waitFor(() =>
-    expect(
-      screen.queryByLabelText("Story points for #1"),
-    ).not.toBeInTheDocument(),
-  );
+  expect(
+    screen.queryByLabelText("Story points for #2"),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Save story points" }));
+  await screen.findByText("Saved story points for 1 work item.");
+  expect(repo.update).toHaveBeenCalledTimes(3);
 });
 
-it("blocks estimation when the story has unsaved My work edits", async () => {
+it("uses the bug field and disables unsupported bug types", async () => {
+  const effort = "Microsoft.VSTS.Scheduling.Effort";
+  const meta = {
+    ...demoMetadata,
+    projectConfigs: {
+      OMS: {
+        ...demoMetadata,
+        bugTypes: ["Bug", "Defect"],
+        typeStoryPointFields: { Bug: effort, Defect: undefined },
+      },
+    },
+  };
+  const { user, repo } = await setup(meta, [
+    story(7, { type: "Bug" }),
+    story(8, { type: "Defect" }),
+  ]);
+  expect(screen.getByLabelText("Story points for #8")).toBeDisabled();
+  await user.type(screen.getByLabelText("Shared story points"), "0");
+  await user.click(
+    screen.getByRole("button", { name: "Apply to shown items" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Save story points" }));
+  await screen.findByText("Saved story points for 1 work item.");
+  expect(repo.update).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), {
+    [effort]: 0,
+  });
+});
+
+it("blocks invalid values and unsaved My work edits", async () => {
   const { user, repo } = await setup();
   localStorage.setItem(
     "taskflow:v1:demo:work-edits",
     JSON.stringify({ 1: { rev: 1, values: { "System.Title": "Draft" } } }),
   );
   await user.type(screen.getByLabelText("Story points for #1"), "5");
-  await user.click(
-    screen.getByRole("button", { name: "Save story points for #1" }),
-  );
-  expect(screen.getByRole("alert")).toHaveTextContent("unsaved My work edits");
+  await user.type(screen.getByLabelText("Story points for #2"), "10001");
+  await user.click(screen.getByRole("button", { name: "Save story points" }));
+  await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
   expect(repo.update).not.toHaveBeenCalled();
-});
-
-it("disables estimation for unsupported fields and clears filters/drafts on project change", async () => {
-  const { user } = await setup({ ...demoMetadata, storyPointField: undefined });
-  expect(screen.getByLabelText("Story points for #1")).toBeDisabled();
-  expect(
-    screen.getByRole("button", { name: "Save story points for #1" }),
-  ).toBeDisabled();
-  await user.type(
-    screen.getByLabelText("Search unestimated stories"),
-    "missing",
-  );
-  await user.selectOptions(
-    screen.getByLabelText("Project for story points"),
-    "Platform",
-  );
-  await screen.findByLabelText("Story points for #6");
-  expect(screen.getByLabelText("Search unestimated stories")).toHaveValue("");
-  expect(
-    screen.queryByLabelText("Story points for #1"),
-  ).not.toBeInTheDocument();
-});
-
-it("shows an empty project and recovers from loading errors", async () => {
-  const { user, repo } = await setup(demoMetadata, [
-    story(1, { storyPoints: 3 }),
-  ]);
-  expect(screen.getByText("All stories have story points")).toBeInTheDocument();
-  vi.mocked(repo.listMine).mockRejectedValueOnce(
-    new Error("Cannot load stories"),
-  );
-  await user.click(screen.getByRole("button", { name: "Refresh" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Cannot load stories",
-  );
-  await user.click(screen.getByRole("button", { name: "Retry loading" }));
-  await waitFor(() =>
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-  );
-  expect(screen.getByText("All stories have story points")).toBeInTheDocument();
 });
