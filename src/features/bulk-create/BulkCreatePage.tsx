@@ -231,12 +231,16 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
       const summary = `${successes} of ${count.stories + count.tasks} items created. ${w.settings.mode === "demo" ? "Saved in demo storage." : "Saved in Azure DevOps."}`;
       void query.invalidateQueries({ queryKey: ["work", w.scope] });
       void query.invalidateQueries({ queryKey: ["hours-work", w.scope] });
+      playSound(
+        successes === count.stories + count.tasks ? "success" : "warning",
+      );
       if (successes === count.stories + count.tasks) {
         fresh();
         onCreated(summary);
       } else setMessage(summary);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submission failed");
+      playSound("error");
     } finally {
       lock.current = false;
       setBusy(false);
@@ -715,3 +719,4 @@ function BulkForm({ onCreated }: { onCreated: (message: string) => void }) {
     </>
   );
 }
+import { playSound } from "../../shared/ui/sounds";

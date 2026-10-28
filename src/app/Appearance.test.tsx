@@ -6,11 +6,28 @@ import {
   AppearanceProvider,
   AppearanceSettings,
 } from "./Appearance";
+import { SOUND_KEY, syncSounds } from "../shared/ui/sounds";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.removeItem(SOUND_KEY);
+  syncSounds();
   delete document.documentElement.dataset.theme;
   document.documentElement.style.colorScheme = "";
+});
+
+it("lets users enable and disable sound feedback", async () => {
+  const user = userEvent.setup();
+  const view = setup();
+  const checkbox = screen.getByRole("checkbox", { name: /sound feedback/i });
+  expect(checkbox).not.toBeChecked();
+  await user.click(checkbox);
+  expect(localStorage.getItem(SOUND_KEY)).toBe("true");
+  view.unmount();
+  setup();
+  expect(screen.getByRole("checkbox", { name: /sound feedback/i })).toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: /sound feedback/i }));
+  expect(localStorage.getItem(SOUND_KEY)).toBe("false");
 });
 const setup = () =>
   render(

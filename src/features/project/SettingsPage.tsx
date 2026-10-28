@@ -8,6 +8,7 @@ import type { Settings } from "../../shared/api/types";
 import { BusyIndicator, Notice, PageTitle } from "../../shared/ui/Common";
 import { AppearanceSettings } from "../../app/Appearance";
 import { Disclosure } from "../../shared/ui/Motion";
+import { playSound } from "../../shared/ui/sounds";
 export function SettingsPage() {
   const w = useWorkspace();
   const [draft, setDraft] = useState({
@@ -83,8 +84,10 @@ export function SettingsPage() {
       setMessage(
         `Connected as ${username}. My Work loads all accessible projects. Choose the destination project only when creating stories.`,
       );
+      playSound("success");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign-in failed");
+      playSound("error");
     } finally {
       setBusy(false);
     }

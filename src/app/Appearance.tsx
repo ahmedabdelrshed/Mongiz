@@ -7,6 +7,13 @@ import {
 } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { readStored, writeStored } from "../shared/storage/storage";
+import {
+  SOUND_KEY,
+  playSound,
+  setSoundsEnabled,
+  soundsEnabled,
+  syncSounds,
+} from "../shared/ui/sounds";
 
 export type ThemePreference = "light" | "dark" | "system";
 export const APPEARANCE_KEY = "taskflow:v1:appearance";
@@ -64,6 +71,15 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
 export function AppearanceSettings() {
   const { preference, setPreference, error } = useContext(AppearanceContext);
+  const [sound, setSound] = useState(soundsEnabled);
+  const [soundError, setSoundError] = useState("");
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key === SOUND_KEY || event.key === null) setSound(syncSounds());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
   return (
     <section
       className="panel appearance-panel"
@@ -92,6 +108,28 @@ export function AppearanceSettings() {
           </button>
         ))}
       </div>
+      <label>
+        <input
+          type="checkbox"
+          checked={sound}
+          onChange={(event) => {
+            const next = event.target.checked;
+            setSound(next);
+            setSoundError(
+              setSoundsEnabled(next)
+                ? ""
+                : "Sound preference changed for this visit. Browser storage is unavailable.",
+            );
+            if (next) playSound("success");
+          }}
+        />
+        Sound feedback for completed actions
+      </label>
+      {soundError && (
+        <p role="status" className="muted">
+          {soundError}
+        </p>
+      )}
       {error && (
         <p role="status" className="muted">
           {error}
