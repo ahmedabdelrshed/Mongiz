@@ -1055,6 +1055,10 @@ legend {
 .virtual-task {
   background: var(--surface);
 }
+.task-parent {
+  padding: 8px 20px 0;
+  font-size: 12px;
+}
 .work-story {
   padding: 18px 20px 12px;
   border-top: 1px solid var(--line);

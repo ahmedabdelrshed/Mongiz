@@ -339,6 +339,7 @@ export class AzureRepository implements Repository {
           }
           const config: ProjectWorkConfig = {
             typeStates,
+            bugTypes,
             storyTypes: categoryTypes(
               "Microsoft.RequirementCategory",
               storyType,
@@ -793,8 +794,11 @@ export class AzureRepository implements Repository {
     const isTask = (x: RawItem) => {
       const config = configFor(x);
       return (
-        config?.taskTypes ?? [config?.taskType ?? this.taskType]
-      ).includes(x.fields["System.WorkItemType"]);
+        !(config?.bugTypes ?? ["Bug"]).includes(x.fields["System.WorkItemType"]) &&
+        (config?.taskTypes ?? [config?.taskType ?? this.taskType]).includes(
+          x.fields["System.WorkItemType"],
+        )
+      );
     };
     const isStory = (x: RawItem) => {
       const config = configFor(x);

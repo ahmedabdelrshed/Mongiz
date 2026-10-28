@@ -218,6 +218,7 @@ function WorkList({
   >(["auto"]);
   const [exporting, setExporting] = useState(false);
   const [statuses, setStatuses] = useState(["all"]);
+  const [workTypes, setWorkTypes] = useState(["all"]);
   const [destinations, setDestinations] = useState(["current"]);
   const [selectedUsers, setSelectedUsers] = useState(["mine"]);
   const owner = w.settings.mode === "demo" ? "ahmed@example.com" : w.account;
@@ -466,22 +467,29 @@ function WorkList({
           configFor(i)?.backlogPath ?? w.meta!.backlogPath,
         ),
       ));
+  const isBug = (item: WorkItem) =>
+    (configFor(item)?.bugTypes ?? ["Bug"]).some(
+      (type) => type.toLowerCase() === item.type.toLowerCase(),
+    );
   const stories = shown.filter(
-      (i) => i.isStory ?? i.type === w.meta!.storyType,
+      (i) => isBug(i) || (i.isStory ?? i.type === w.meta!.storyType),
     ),
-    tasks = shown.filter((i) => i.isTask ?? i.type === w.meta!.taskType);
+    tasks = shown.filter((i) => !isBug(i) && (i.isTask ?? i.type === w.meta!.taskType));
   const groups = groupWorkItems({
     stories,
     tasks,
     search,
     matchesFilters,
     plannedIds: today ? plan : undefined,
+    includeStory: (item) =>
+      workTypes.includes("all") || workTypes.includes(isBug(item) ? "bugs" : "stories"),
+    includeTasks: workTypes.includes("all") || workTypes.includes("tasks"),
   });
   const change = (item: WorkItem, values: Record<string, string | number>) => {
     setMessage("");
     setError("");
     try {
-      const story = item.isStory ?? item.type === w.meta!.storyType;
+      const story = isBug(item) || (item.isStory ?? item.type === w.meta!.storyType);
       if (
         story &&
         values["System.State"] === "Closed" &&
@@ -504,7 +512,7 @@ function WorkList({
     }
   };
   const visibleTasks = groups.flatMap((g) => g.tasks);
-  const visibleStories = groups.flatMap((g) => (g.story ? [g.story] : []));
+  const visibleStories = groups.flatMap((g) => (g.story && !g.contextOnly ? [g.story] : []));
   const fillHours = () => {
     setError("");
     setMessage("");
@@ -842,6 +850,21 @@ function WorkList({
           }}
         />
         <SearchableMultiSelect
+          label="Filter work item type"
+          options={[
+            { value: "all", label: "All work item types" },
+            { value: "stories", label: "User stories" },
+            { value: "bugs", label: "Bugs" },
+            { value: "tasks", label: "Tasks" },
+          ]}
+          value={workTypes}
+          allValue="all"
+          onChange={(value) => {
+            setWorkTypes(value);
+            setSelected([]);
+          }}
+        />
+        <SearchableMultiSelect
           label="Filter status"
           options={[
             { value: "all", label: "All statuses" },
@@ -1108,6 +1131,7 @@ function WorkList({
             ...selectedUsers,
             ...destinations,
             ...statuses,
+            ...workTypes,
             search,
           ].join(":")}
           rowCount={virtualRows.length}
@@ -1118,6 +1142,13 @@ function WorkList({
               const item = row.item;
               return (
                 <div className="virtual-task" data-story-id={group.story?.id}>
+                  <div className="muted task-parent">
+                    {group.story
+                      ? `${group.story.type} #${group.story.id}: ${group.story.title}`
+                      : item.parentId
+                        ? `Parent #${item.parentId} (details unavailable)`
+                        : "No parent story or bug"}
+                  </div>
                   <ItemRow
                     compact={compact}
                     onEditTask={() => setTaskEditorId(item.id)}
@@ -1149,7 +1180,12 @@ function WorkList({
             }
             return (
               <section className="virtual-story">
-                {group.story && (
+                {group.story && (group.contextOnly ? (
+                  <div className="work-story">
+                    <span className="type-badge">{group.story.type.toUpperCase()} · #{group.story.id}</span>
+                    <h2>{group.story.title}</h2>
+                  </div>
+                ) : (
                   <div className="work-story">
                     <span className="type-badge">
                       {group.story.type.toUpperCase()} · #{group.story.id}
@@ -1237,7 +1273,7 @@ function WorkList({
                       {group.tasks.length} tasks
                     </div>
                   </div>
-                )}
+                ))}
                 {group.tasks.length > 0 ? (
                   <>
                     <div className="work-labels">
