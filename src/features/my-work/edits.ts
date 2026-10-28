@@ -95,6 +95,32 @@ export function stageState(
 ): Edits {
   return stage(items, edits, item.id, { "System.State": state }, supported);
 }
+
+export function stageStoryClosure(
+  items: WorkItem[],
+  edits: Edits,
+  story: WorkItem,
+  taskFields: (item: WorkItem) => string[],
+  taskStates: (item: WorkItem) => string[],
+): Edits {
+  let next = stage(items, edits, story.id, { "System.State": "Closed" }, []);
+  for (const task of items.filter(
+    (item) =>
+      item.parentId === story.id && (item.isTask ?? item.type === "Task"),
+  )) {
+    const current = effective(task, next).state;
+    if (["Closed", "Done", "Completed", "Removed"].includes(current)) continue;
+    const terminal = ["Closed", "Done", "Completed"].find((state) =>
+      taskStates(task).includes(state),
+    );
+    if (!terminal)
+      throw new Error(
+        `Cannot close task #${task.id}: no supported closed state is available.`,
+      );
+    next = stageState(items, next, task, terminal, taskFields(task));
+  }
+  return next;
+}
 export function patchValues(
   values: Record<string, string | number>,
 ): Record<string, unknown> {

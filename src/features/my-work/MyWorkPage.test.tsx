@@ -105,6 +105,40 @@ it("copies only selected implementation tasks for a PR and preserves drafts and 
   );
 });
 
+it("copies only selected implementation tasks in the filtered list", async () => {
+  const existing = await demoRepository.listMine();
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify(
+      existing.map((item) => ({
+        ...item,
+        title:
+          item.id === 2482
+            ? "Implement frontend"
+            : item.id === 2483
+              ? "Implement frontend API"
+              : item.title,
+      })),
+    ),
+  );
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  setup();
+  const search = await screen.findByLabelText("Search work");
+  await user.type(search, "frontend");
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select task: Implement frontend" }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Copy implementation tasks for PR" }),
+  );
+  expect(write).toHaveBeenLastCalledWith("#2482");
+  await user.clear(search);
+  expect(
+    screen.queryByRole("button", { name: "Copy implementation tasks for PR" }),
+  ).not.toBeInTheDocument();
+});
+
 it.each(["denied", "unavailable"])(
   "provides selectable PR text when clipboard access is %s and allows retrying",
   async (access) => {
@@ -217,7 +251,57 @@ it("shows export failures and allows retrying", async () => {
   await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
   await screen.findByText(/Exported 1 user stories and 3 tasks to Excel/);
 });
-function setup() {
+it("links only selected implementation tasks and reports partial failures", async () => {
+  const existing = await demoRepository.listMine();
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify(
+      existing.map((item) => ({
+        ...item,
+        title:
+          item.id === 2482
+            ? "Implement frontend"
+            : item.id === 2483
+              ? "Implement backend"
+              : item.title,
+      })),
+    ),
+  );
+  const listPullRequests = vi
+    .fn()
+    .mockResolvedValue([
+      { id: 42, title: "Feature", repository: "repo", artifactId: "artifact" },
+    ]);
+  const linkPullRequest = vi.fn().mockImplementation(async (item) => {
+    if (item.id === 2483) throw new Error("Access denied");
+    return { item: { ...item, rev: item.rev + 1 }, alreadyLinked: false };
+  });
+  const user = userEvent.setup();
+  setup({ ...demoRepository, listPullRequests, linkPullRequest });
+  await screen.findByLabelText("Search work");
+  await user.click(screen.getByLabelText("Select all tasks"));
+  await user.click(
+    screen.getByRole("button", { name: "Link implementation tasks to PR" }),
+  );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Link implementation tasks to pull request",
+  });
+  await user.selectOptions(
+    within(dialog).getByLabelText("Pull request project"),
+    "OMS",
+  );
+  await user.selectOptions(
+    await within(dialog).findByLabelText("Pull request"),
+    "42",
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Link tasks" }));
+  await within(dialog).findByText("#2483: Access denied");
+  expect(within(dialog).getByText("#2482: Linked")).toBeInTheDocument();
+  expect(linkPullRequest.mock.calls.map(([item]) => item.id)).toEqual([
+    2482, 2483,
+  ]);
+});
+function setup(repository = demoRepository) {
   return render(
     <MemoryRouter>
       <QueryClientProvider
@@ -225,7 +309,7 @@ function setup() {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <WorkspaceProvider repositoryOverride={demoRepository}>
+        <WorkspaceProvider repositoryOverride={repository}>
           <MyWorkPage />
         </WorkspaceProvider>
       </QueryClientProvider>

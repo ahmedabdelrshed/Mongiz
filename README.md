@@ -50,6 +50,7 @@ Redeploy after changing the routing configuration, then open `/settings` directl
 - Review before submitting; progress remains in memory while the creation page is open.
 - Recover partial failures: successful items are skipped, failed items can be retried, uncertain network results require checking Azure manually.
 - My Work: assigned stories/tasks, search, status/iteration filters, task state/assignee/Original Estimate/Remaining Work/Completed Work drafts with an explicit Save changes button, and staged bulk assignment.
+- Select implementation tasks in My Work and link them to an active pull request in any accessible project. The dialog reports each result and skips existing links; retrying is safe. This requires Code (Read) and Work Items (Read & write) access.
 - Today’s plan: personal task selection scoped by local calendar date.
 - My Work edit draft persistence, explicit export/import of creation batches, local task templates.
 - Responsive layouts and accessible labels for keyboard and screen-reader use.
@@ -79,7 +80,7 @@ This release targets hosted Azure DevOps Services (`dev.azure.com`), not on-prem
 ### Personal access token (default)
 
 1. Open Azure DevOps → User settings → Personal access tokens → New Token.
-2. Select the organization you will use and an expiration date. Enable **Work Items (Read & write)** and **Project and Team (Read)**, and **Graph (Read)**. Your organization may restrict PAT creation; the token cannot grant more access than your account already has.
+2. Select the organization you will use and an expiration date. Enable **Work Items (Read & write)** and **Project and Team (Read)**, and **Graph (Read)**. Enable **Code (Read)** to select pull requests for linking tasks. Your organization may restrict PAT creation; the token cannot grant more access than your account already has.
 3. In Mongiz Settings, select **Personal access token (PAT)**, enter the organization name (for `https://dev.azure.com/ezzmed`, enter `ezzmed`) and paste the token.
 4. Click **Connect with token**. Mongiz verifies the token owner, then loads projects. My Work reads across accessible projects immediately; no project or team selection is required at sign-in.
 

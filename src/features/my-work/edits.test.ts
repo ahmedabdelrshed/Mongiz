@@ -1,6 +1,12 @@
 import { expect, it } from "vitest";
 import { fields, type WorkItem } from "../../shared/api/types";
-import { effective, patchValues, stage, stageState } from "./edits";
+import {
+  effective,
+  patchValues,
+  stage,
+  stageState,
+  stageStoryClosure,
+} from "./edits";
 const tasks: WorkItem[] = [1, 2, 3, 4].map((id) => ({
   id,
   rev: 1,
@@ -13,7 +19,13 @@ const tasks: WorkItem[] = [1, 2, 3, 4].map((id) => ({
   estimate: 0.5,
 }));
 it("closes only the edited task, preserving siblings of every assignee", () => {
-  const edits = stageState(tasks, {}, tasks[0], "Closed", Object.values(fields));
+  const edits = stageState(
+    tasks,
+    {},
+    tasks[0],
+    "Closed",
+    Object.values(fields),
+  );
   expect(Object.keys(edits)).toEqual(["1"]);
   expect(effective(tasks[0], edits)).toMatchObject({
     state: "Closed",
@@ -75,7 +87,13 @@ it("preserves completed hours when Closed is reapplied to saved or draft state",
     Object.values(fields),
   );
   expect(estimate[task.id].values).toEqual({ [fields.estimate]: 3 });
-  const closed = stageState(tasks, {}, tasks[0], "Closed", Object.values(fields));
+  const closed = stageState(
+    tasks,
+    {},
+    tasks[0],
+    "Closed",
+    Object.values(fields),
+  );
   const manual = stage(
     tasks,
     closed,
@@ -167,4 +185,37 @@ it("loading, assignment and estimate edits do not generate completed work edits 
     Object.values(fields),
   );
   expect(changedEstimate[1].values[fields.completed]).toBe(4);
+});
+
+it("stages all child tasks when closing a story and leaves unrelated tasks alone", () => {
+  const story = {
+    ...tasks[0],
+    id: 100,
+    isStory: true,
+    parentId: undefined,
+    type: "User Story",
+  };
+  const items = [story, ...tasks];
+  const edits = stageStoryClosure(
+    items,
+    {},
+    story,
+    () => Object.values(fields),
+    () => ["New", "Closed"],
+  );
+  expect(Object.keys(edits).sort()).toEqual(["1", "100", "2", "4"]);
+  expect(edits[2].values).toMatchObject({
+    "System.State": "Closed",
+    [fields.completed]: 0.5,
+  });
+  expect(edits[3]).toBeUndefined();
+  expect(() =>
+    stageStoryClosure(
+      items,
+      {},
+      story,
+      () => [],
+      () => ["New"],
+    ),
+  ).toThrow("no supported closed state");
 });
