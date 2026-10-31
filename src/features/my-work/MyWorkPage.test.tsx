@@ -22,27 +22,47 @@ it("filters stories, bugs and tasks separately while showing each task's parent"
   const existing = await demoRepository.listMine();
   const story = existing.find((item) => item.id === 2481)!;
   const task = existing.find((item) => item.id === 2482)!;
-  localStorage.setItem("taskflow:v1:demo:workitems", JSON.stringify([
-    ...existing,
-    { ...story, id: 9001, type: "Bug", title: "Search defect", assignedTo: task.assignedTo, iteration: task.iteration },
-    { ...task, id: 9002, parentId: 9001, title: "Fix defect" },
-  ]));
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify([
+      ...existing,
+      {
+        ...story,
+        id: 9001,
+        type: "Bug",
+        title: "Search defect",
+        assignedTo: task.assignedTo,
+        iteration: task.iteration,
+      },
+      { ...task, id: 9002, parentId: 9001, title: "Fix defect" },
+    ]),
+  );
   const user = userEvent.setup();
   setup();
   await screen.findByLabelText("Build search form state");
   await chooseFilter(user, "Filter work item type", "Tasks");
   expect(screen.getAllByText(/User Story #2481:/).length).toBeGreaterThan(0);
   expect(screen.getByText("Bug #9001: Search defect")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Select story: Search defect")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Select story: Search defect"),
+  ).not.toBeInTheDocument();
   await chooseFilter(user, "Filter work item type", "All work item types");
   await chooseFilter(user, "Filter work item type", "Bugs");
-  expect(screen.getByLabelText("Select story: Search defect")).toBeInTheDocument();
+  expect(
+    screen.getByLabelText("Select story: Search defect"),
+  ).toBeInTheDocument();
   expect(screen.queryByLabelText("Fix defect state")).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Select story: Search device history")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Select story: Search device history"),
+  ).not.toBeInTheDocument();
   await chooseFilter(user, "Filter work item type", "All work item types");
   await chooseFilter(user, "Filter work item type", "User stories");
-  expect(screen.queryByLabelText("Select story: Search defect")).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Build search form state")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Select story: Search defect"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Build search form state"),
+  ).not.toBeInTheDocument();
 });
 
 it("copies only selected implementation tasks for a PR and preserves drafts and selection", async () => {
@@ -470,12 +490,22 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
     "2484": { rev: 1, values: { [fields.completed]: 2 } },
   });
   await user.click(fill);
-  expect(
-    screen.getByText(/Already at or above the minimum/),
-  ).toBeInTheDocument();
+  expect(screen.getByText(/Already at the target/)).toBeInTheDocument();
   expect(
     JSON.parse(localStorage.getItem("taskflow:v1:demo:work-edits")!),
   ).toEqual(draft);
+  await user.clear(target);
+  await user.type(target, "8");
+  await user.click(fill);
+  expect(
+    screen.getByLabelText("Implement frontend requirements estimate hours"),
+  ).toHaveValue(3);
+  expect(
+    screen.getByLabelText("Implement frontend requirements completed hours"),
+  ).toHaveValue(3);
+  expect(screen.getByText(/Removed 4h across 1 tasks/)).toBeInTheDocument();
+  await user.clear(target);
+  await user.type(target, "12");
   await user.click(screen.getByRole("button", { name: "Discard changes" }));
   expect(
     screen.getByLabelText("Implement frontend requirements estimate hours"),

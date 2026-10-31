@@ -546,7 +546,7 @@ function WorkList({
             (summary) =>
               `${summary.project ? `${summary.project} · ` : ""}${summary.iteration || "Backlog"}: ${
                 summary.reason ??
-                `Added ${summary.added}h across ${summary.changed} tasks`
+                `${summary.added < 0 ? "Removed" : "Added"} ${Math.abs(summary.added)}h across ${summary.changed} tasks`
               }. Completed hours matched for ${summary.completionOnly} other estimated tasks. ${summary.unmatched} titles unmatched for added hours; ${summary.unsupported} tasks unsupported for added hours.`,
           ),
         ].join(" "),
@@ -956,11 +956,11 @@ function WorkList({
               Fill sprint minimum
             </button>
             <p className="muted">
-              Fill each filtered sprint to {target.min}h, including closed and
+              Adjust each filtered sprint to {target.min}h, including closed and
               offscreen tasks. Choose multiple categories to share added hours
               across their tasks. Auto uses implementation, then testing, then
               code review per story. All filtered estimates count toward the
-              total. Added hours are shared equally. Completed Work matches
+              total. Adjustments are shared across eligible tasks. Completed Work matches
               every estimated task, including tasks receiving no added hours.
               State and Remaining Work stay unchanged. Save changes to apply.
             </p>
