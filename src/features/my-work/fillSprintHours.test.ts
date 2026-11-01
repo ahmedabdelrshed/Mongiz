@@ -308,3 +308,59 @@ it("accounts for saved estimates with extra precision without needing a second f
   expect(smallGap.changes.map((change) => change.item.id)).toEqual([1]);
   expect(smallGap.changes[0].values[fields.estimate]).toBe(1.01);
 });
+
+it("reduces eligible estimates to reach the target without making hours negative", () => {
+  const tasks = [
+    task(1, "Implement frontend", { estimate: 1 }),
+    task(2, "Implement backend", { estimate: 9 }),
+    task(3, "Unit testing", { estimate: 2 }),
+  ];
+  const result = fillSprintHours({ ...options, tasks, minimum: 5 });
+  expect(
+    result.changes.map(({ item, values }) => [
+      item.id,
+      values[fields.estimate],
+    ]),
+  ).toEqual([
+    [1, 0],
+    [2, 3],
+    [3, undefined],
+  ]);
+  expect(result.summaries[0]).toMatchObject({
+    before: 12,
+    added: -7,
+    changed: 2,
+  });
+  const filled = tasks.map((item) => ({
+    ...item,
+    ...Object.fromEntries(
+      Object.entries(
+        result.changes.find((change) => change.item.id === item.id)?.values ??
+          {},
+      )
+        .filter(([key]) => key === fields.estimate)
+        .map(([, value]) => ["estimate", value]),
+    ),
+  }));
+  expect(
+    fillSprintHours({ ...options, tasks: filled, minimum: 5 }).summaries[0]
+      .reason,
+  ).toBe("Already at the target");
+});
+
+it("explains when estimates outside the selected categories exceed the target", () => {
+  const tasks = [
+    task(1, "Implement frontend", { estimate: 2 }),
+    task(2, "Unit testing", { estimate: 8 }),
+  ];
+  const result = fillSprintHours({
+    ...options,
+    tasks,
+    minimum: 5,
+    categories: ["implementation"],
+  });
+  expect(result.summaries[0].reason).toMatch(/other task estimates exceed/);
+  expect(
+    result.changes.every(({ values }) => !(fields.estimate in values)),
+  ).toBe(true);
+});

@@ -73,7 +73,7 @@ export function fillSprintHours({
     const before = Math.round(
       bucket.reduce((sum, task) => sum + (task.estimate ?? 0), 0) * 100,
     );
-    const gap = Math.max(0, Math.round(minimum * 100) - before);
+    const gap = Math.round(minimum * 100) - before;
     const classified = bucket.map((task) => ({
       task,
       kind: taskHourCategory(task.title),
@@ -117,7 +117,7 @@ export function fillSprintHours({
       }
     }
     if (!gap) {
-      summary.reason = "Already at or above the minimum";
+      summary.reason = "Already at the target";
       continue;
     }
     const byStory = new Map<string, WorkItem[]>();
@@ -147,6 +147,53 @@ export function fillSprintHours({
       .sort((a, b) => a.id - b.id);
     if (!eligible.length) {
       summary.reason = "No eligible tasks for the selected categories";
+      continue;
+    }
+    if (gap < 0) {
+      const eligibleIds = new Set(eligible.map((item) => item.id));
+      const unchanged = bucket.reduce(
+        (sum, item) =>
+          sum + (eligibleIds.has(item.id) ? 0 : (item.estimate ?? 0)),
+        0,
+      );
+      const available = Math.round(minimum * 100) - Math.round(unchanged * 100);
+      if (available < 0) {
+        summary.reason =
+          "Cannot reach the target: other task estimates exceed it";
+        continue;
+      }
+      const amounts = eligible.map((item) =>
+        Math.round((item.estimate ?? 0) * 100),
+      );
+      let reduction =
+        amounts.reduce((sum, amount) => sum + amount, 0) - available;
+      while (reduction > 0) {
+        const active = amounts
+          .map((amount, index) => (amount > 0 ? index : -1))
+          .filter((index) => index >= 0);
+        if (!active.length) break;
+        const share = Math.floor(reduction / active.length);
+        const remainder = reduction % active.length;
+        for (const [position, index] of active.entries()) {
+          const removed = Math.min(
+            amounts[index],
+            share + (position < remainder ? 1 : 0),
+          );
+          amounts[index] -= removed;
+          reduction -= removed;
+        }
+      }
+      eligible.forEach((item, index) => {
+        const estimate = amounts[index] / 100;
+        if (estimate === (item.estimate ?? 0)) return;
+        if (changes.has(item.id)) summary.completionOnly--;
+        changes.set(item.id, {
+          item,
+          values: { [fields.estimate]: estimate, [fields.completed]: estimate },
+        });
+        summary.changed++;
+      });
+      summary.added = gap / 100;
       continue;
     }
     // Only the first IDs receive a share when the gap is smaller than one
