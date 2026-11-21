@@ -32,7 +32,7 @@ const options = {
   backlogPath: (item: WorkItem) => item.project ?? "OMS",
 };
 
-it("adds equal shares to closed implementation tasks and explicitly matches completed work", () => {
+it("assigns equal estimates to closed implementation tasks and explicitly matches completed work", () => {
   const tasks = [
     task(2, "Implement backend requirements"),
     task(1, "Implement frontend requirements"),
@@ -70,7 +70,7 @@ it("falls back separately per story, including missing estimates and 0.1h testin
   );
   expect(allocated.map(({ item }) => item.id)).toEqual([1, 3, 5]);
   expect(allocated.map(({ values }) => values[fields.estimate])).toEqual([
-    1, 1.1, 1.1,
+    1.07, 1.07, 1.06,
   ]);
   expect(
     result.changes.filter(({ values }) => !(fields.estimate in values)),
@@ -124,7 +124,7 @@ it("recognizes category title variants and honors explicit category choices", ()
   }
 });
 
-it("shares the gap across all selected categories while preserving other estimates", () => {
+it("shares the target across all selected categories while preserving other estimates", () => {
   const tasks = [
     task(1, "Implement frontend"),
     task(2, "Unit testing"),
@@ -148,21 +148,30 @@ it("shares the gap across all selected categories while preserving other estimat
   });
 });
 
-it("separates projects/sprints and unparented tasks, skips backlog, and assigns rounding by ID", () => {
+it("shares one target across projects/sprints and unparented tasks, and skips backlog", () => {
   const tasks = [
     task(3, "Code review", { parentId: undefined, estimate: 0 }),
     task(2, "Unit testing", { parentId: undefined, estimate: 0 }),
     task(1, "Implement frontend", { parentId: undefined, estimate: 0 }),
     task(4, "Implement backend", { iteration: "OMS\\Sprint 2", estimate: 0 }),
     task(5, "Implement backend", { project: "Other", estimate: 0 }),
-    task(6, "Implement frontend", { iteration: "OMS", estimate: 0 }),
+    task(6, "Implement frontend", { iteration: "OMS", estimate: 50 }),
   ];
   const result = fillSprintHours({ ...options, tasks, minimum: 1 });
   expect(result.changes.map(({ values }) => values[fields.estimate])).toEqual([
-    0.34, 0.33, 0.33, 1, 1,
+    0.2, 0.2, 0.2, 0.2, 0.2,
   ]);
   expect(result.summaries).toHaveLength(4);
   expect(result.summaries[3].reason).toMatch(/Backlog/);
+  expect(result.total).toEqual({
+    target: 1,
+    before: 0,
+    after: 1,
+    skippedBacklog: 1,
+  });
+  expect(result.summaries.map((summary) => summary.added)).toEqual([
+    0.6, 0.2, 0.2, 0,
+  ]);
 });
 
 it("skips unsupported tasks with category fallback and explains unfillable or full sprints", () => {
@@ -199,8 +208,8 @@ it("uses effective drafts, retains original revisions, and is idempotent", () =>
     edits = stage(tasks, edits, item.id, values, Object.values(fields));
   expect(edits[1].rev).toBe(2);
   expect(effective(tasks[0], edits)).toMatchObject({
-    estimate: 16,
-    completed: 16,
+    estimate: 15,
+    completed: 15,
     state: "Closed",
     remaining: 2,
   });
@@ -235,7 +244,7 @@ it("counts other estimates in the gap and matches completed work across every ta
   });
 });
 
-it("matches completion at/above target or without eligible categories while respecting field support and backlog", () => {
+it("returns no partial completion changes when no supported recipients exist", () => {
   const tasks = [
     task(1, "Unit testing", { estimate: 2 }),
     task(2, "Link source code", { estimate: 0, completed: 0.5 }),
@@ -253,13 +262,9 @@ it("matches completion at/above target or without eligible categories while resp
       categories: ["implementation"],
       supportedFields,
     });
-    expect(result.changes.map(({ item, values }) => [item.id, values])).toEqual(
-      [
-        [1, { [fields.completed]: 2 }],
-        [2, { [fields.completed]: 0 }],
-      ],
-    );
-    expect(result.summaries[0].completionOnly).toBe(2);
+    expect(result.changes).toEqual([]);
+    expect(result.total.reason).toMatch(/exceed|No eligible/);
+    expect(result.summaries[0].completionOnly).toBe(0);
   }
 });
 
@@ -322,8 +327,8 @@ it("reduces eligible estimates to reach the target without making hours negative
       values[fields.estimate],
     ]),
   ).toEqual([
-    [1, 0],
-    [2, 3],
+    [1, 1.5],
+    [2, 1.5],
     [3, undefined],
   ]);
   expect(result.summaries[0]).toMatchObject({
@@ -360,7 +365,94 @@ it("explains when estimates outside the selected categories exceed the target", 
     categories: ["implementation"],
   });
   expect(result.summaries[0].reason).toMatch(/other task estimates exceed/);
+  expect(result.changes).toEqual([]);
+  expect(result.total).toMatchObject({ target: 5, before: 10, after: 10 });
+});
+
+it.each([10, 30, 40])(
+  "redistributes an existing %ih total and fills missing estimates",
+  (estimate) => {
+    const tasks = [
+      task(2, "Implement backend", {
+        estimate: undefined,
+        completed: undefined,
+        project: "Other",
+      }),
+      task(1, "Implement frontend", { estimate }),
+    ];
+    const result = fillSprintHours({ ...options, tasks });
+    expect(result.changes.map(({ values }) => values)).toEqual([
+      { [fields.estimate]: 15, [fields.completed]: 15 },
+      { [fields.estimate]: 15, [fields.completed]: 15 },
+    ]);
+    expect(result.total).toEqual({
+      target: 30,
+      before: estimate,
+      after: 30,
+      skippedBacklog: 0,
+    });
+  },
+);
+
+it("keeps Auto fallback independent across project/sprint boundaries", () => {
+  const tasks = [
+    task(1, "Implement frontend", { estimate: 30 }),
+    task(2, "Unit testing", { estimate: 0 }),
+    task(3, "Unit testing", { estimate: 0, iteration: "OMS\\Sprint 2" }),
+    task(4, "Code review", { estimate: 0, project: "Other" }),
+  ];
+  const result = fillSprintHours({ ...options, tasks });
   expect(
-    result.changes.every(({ values }) => !(fields.estimate in values)),
-  ).toBe(true);
+    result.changes
+      .filter(({ values }) => fields.estimate in values)
+      .map(({ item, values }) => [item.id, values[fields.estimate]]),
+  ).toEqual([
+    [1, 10],
+    [3, 10],
+    [4, 10],
+  ]);
+  expect(result.total.after).toBe(30);
+});
+
+it.each([0, 0.01, 1])(
+  "allocates a %ih target with stable rounding and no negative values",
+  (minimum) => {
+    const tasks = [3, 1, 2].map((id) =>
+      task(id, "Implement frontend", { estimate: undefined }),
+    );
+    const result = fillSprintHours({ ...options, tasks, minimum });
+    const filled = tasks.map((item) => {
+      const values = result.changes.find(
+        (change) => change.item.id === item.id,
+      )!.values;
+      expect(values[fields.estimate]).toBeGreaterThanOrEqual(0);
+      return {
+        ...item,
+        estimate: values[fields.estimate],
+        completed: values[fields.completed],
+      };
+    });
+    expect(hourTotals(filled).estimate).toBe(minimum);
+    expect(result.changes[0].values[fields.estimate]).toBe(
+      Math.ceil((minimum * 100) / 3) / 100,
+    );
+    expect(
+      fillSprintHours({ ...options, tasks: filled, minimum }).changes,
+    ).toEqual([]);
+  },
+);
+
+it("subtracts fixed estimates with extra precision once from the combined target", () => {
+  const tasks = [
+    task(1, "Implement frontend", { estimate: 5 }),
+    task(2, "Implement backend", { estimate: 10 }),
+    task(3, "Link source code", { estimate: 0.333 }),
+  ];
+  const result = fillSprintHours({ ...options, tasks, minimum: 1 });
+  expect(result.changes.map(({ values }) => values[fields.estimate])).toEqual([
+    0.34,
+    0.33,
+    undefined,
+  ]);
+  expect(result.total.after).toBe(1);
 });
