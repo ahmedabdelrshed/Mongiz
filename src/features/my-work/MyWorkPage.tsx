@@ -515,23 +515,31 @@ function WorkList({
   };
   const visibleTasks = groups.flatMap((g) => g.tasks);
   const visibleStories = groups.flatMap((g) => (g.story && !g.contextOnly ? [g.story] : []));
+  const pickedTasks = visibleTasks.filter((i) => selected.includes(i.id));
+  const fillTasks = pickedTasks.length ? pickedTasks : visibleTasks;
+  const fillScope = pickedTasks.length ? "selected tasks" : "filtered tasks";
   const fillHours = () => {
     setError("");
     setMessage("");
     try {
       // Validate raw drafts too: effective() converts a cleared input to zero.
-      for (const task of visibleTasks)
-        patchValues(edits[task.id]?.values ?? {});
+      for (const task of fillTasks) patchValues(edits[task.id]?.values ?? {});
       const supportedFields = (item: WorkItem) =>
         configFor(item)?.taskFields ?? w.meta!.taskFields;
       const result = fillSprintHours({
-        tasks: visibleTasks,
+        tasks: fillTasks,
         minimum: target.min,
         categories: selectedHourCategories,
         supportedFields,
         backlogPath: (item) =>
           configFor(item)?.backlogPath ?? w.meta!.backlogPath,
       });
+      if (result.total.reason && !result.changes.length) {
+        setMessage(
+          `${result.total.reason}. Combined target: ${result.total.target}h for ${fillScope}; combined estimate: ${result.total.after}h. ${result.total.skippedBacklog} backlog tasks skipped.`,
+        );
+        return;
+      }
       setEdits((previous) =>
         result.changes.reduce(
           (next, { item, values }) =>
@@ -542,12 +550,13 @@ function WorkList({
       setMessage(
         [
           `${result.changes.length} tasks staged. Save changes to apply.`,
+          `Combined target: ${result.total.target}h for ${fillScope}; combined estimate: ${result.total.before}h → ${result.total.after}h. ${result.total.skippedBacklog} backlog tasks skipped.`,
           ...result.summaries.map(
             (summary) =>
               `${summary.project ? `${summary.project} · ` : ""}${summary.iteration || "Backlog"}: ${
                 summary.reason ??
                 `${summary.added < 0 ? "Removed" : "Added"} ${Math.abs(summary.added)}h across ${summary.changed} tasks`
-              }. Completed hours matched for ${summary.completionOnly} other estimated tasks. ${summary.unmatched} titles unmatched for added hours; ${summary.unsupported} tasks unsupported for added hours.`,
+              }. Completed hours matched for ${summary.completionOnly} other estimated tasks. ${summary.unmatched} titles unmatched for allocation; ${summary.unsupported} tasks unsupported for allocation.`,
           ),
         ].join(" "),
       );
@@ -584,7 +593,6 @@ function WorkList({
       setExporting(false);
     }
   };
-  const pickedTasks = visibleTasks.filter((i) => selected.includes(i.id));
   const pickedStories = visibleStories.filter((i) => selected.includes(i.id));
   const toggle = (id: number) =>
     setSelected((ids) =>
@@ -909,7 +917,10 @@ function WorkList({
           summary={`${target.min}h target`}
         >
           <section className="bulk-toolbar" aria-label="Fill sprint hours">
-            <strong>Sprint minimum: {target.min}h</strong>
+            <strong>Combined target: {target.min}h</strong>
+            <span>
+              {fillTasks.length} {fillScope}
+            </span>
             <div
               className="actions"
               role="group"
@@ -949,20 +960,23 @@ function WorkList({
                 query.isFetching ||
                 !!query.error ||
                 !query.isSuccess ||
-                !visibleTasks.length
+                !fillTasks.length
               }
               onClick={fillHours}
             >
               Fill sprint minimum
             </button>
             <p className="muted">
-              Adjust each filtered sprint to {target.min}h, including closed and
-              offscreen tasks. Choose multiple categories to share added hours
-              across their tasks. Auto uses implementation, then testing, then
-              code review per story. All filtered estimates count toward the
-              total. Adjustments are shared across eligible tasks. Completed Work matches
-              every estimated task, including tasks receiving no added hours.
-              State and Remaining Work stay unchanged. Save changes to apply.
+              Apply one {target.min}h total across projects and sprints. Use
+              checked tasks when any are checked; otherwise use all filtered tasks,
+              including closed and offscreen tasks. Backlog tasks are skipped.
+              Auto uses implementation, then testing, then code review per story.
+              Choose multiple categories to share the total across their tasks.
+              Other scoped estimates stay fixed and count toward the total.
+              Eligible estimates are replaced with equal shares, even when the
+              current total meets or exceeds the target. Completed Work matches
+              every scoped estimated task. State and Remaining Work stay unchanged.
+              Save changes to apply.
             </p>
           </section>
         </Disclosure>

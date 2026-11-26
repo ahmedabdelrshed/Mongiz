@@ -1017,6 +1017,84 @@ test("My Work search resets a scrolled list and fills every filtered task includ
   });
 });
 
+test("My Work fills one combined target across selected projects and redistributes at or above target", async ({
+  page,
+}) => {
+  const { calls } = await azureFixture(
+    page,
+    true,
+    2,
+    "Active",
+    (id) => `Implement task ${id}`,
+  );
+  await navigate(page, "My work");
+  await page.getByLabel("Load project OMS").check();
+  await page.getByLabel("Load project Platform").check();
+  await page.getByRole("button", { name: "Load selected projects" }).click();
+  await expect(
+    page.getByLabel("Implement task 21 estimate hours"),
+  ).toBeVisible();
+  for (const id of [1000, 21])
+    await page
+      .getByRole("checkbox", {
+        name: `Select task: Implement task ${id}`,
+        exact: true,
+      })
+      .check();
+  await page
+    .getByRole("button", { name: "Configure sprint minimum", exact: true })
+    .click();
+  const fill = page.getByRole("button", {
+    name: "Fill sprint minimum",
+    exact: true,
+  });
+  for (const estimate of [30, 40]) {
+    await page
+      .getByLabel("Implement task 1000 estimate hours")
+      .fill(String(estimate));
+    await page.getByLabel("Implement task 21 estimate hours").fill("0");
+    await fill.click();
+    for (const id of [1000, 21]) {
+      await expect(
+        page.getByLabel(`Implement task ${id} estimate hours`),
+      ).toHaveValue("15");
+      await expect(
+        page.getByLabel(`Implement task ${id} completed hours`),
+      ).toHaveValue("15");
+    }
+    await expect(
+      page.getByLabel("Implement task 1001 estimate hours"),
+    ).toHaveValue("3");
+    await expect(
+      page.getByLabel("Implement task 1001 completed hours"),
+    ).toHaveValue("2");
+    await expect(
+      page.getByText(
+        /Combined target: 30h for selected tasks; combined estimate:/,
+      ),
+    ).toContainText(`${estimate}h → 30h`);
+  }
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(0);
+  await page
+    .getByRole("button", { name: "Discard changes", exact: true })
+    .click();
+  for (const id of [1000, 21])
+    await page
+      .getByRole("checkbox", {
+        name: `Select task: Implement task ${id}`,
+        exact: true,
+      })
+      .uncheck();
+  await fill.click();
+  for (const id of [1000, 1001, 21])
+    await expect(
+      page.getByLabel(`Implement task ${id} estimate hours`),
+    ).toHaveValue("10");
+  await page.getByRole("button", { name: /Save changes/ }).click();
+  await expect(page.getByText("Saved changes to 3 work items.")).toBeVisible();
+  expect(calls.filter((call) => Array.isArray(call.body))).toHaveLength(3);
+});
+
 test("My Work category actions fit mobile and save only the searched task's hours", async ({
   page,
 }, testInfo) => {
@@ -1102,7 +1180,6 @@ test("My Work category actions fit mobile and save only the searched task's hour
   expect(patches).toHaveLength(1);
   expect(patches[0].url).toMatch(/workitems\/1000\?/i);
   expect(patches[0].body).toEqual([
-    { op: "test", path: "/rev", value: 1 },
     {
       op: "add",
       path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",

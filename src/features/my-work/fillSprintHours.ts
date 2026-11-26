@@ -32,8 +32,15 @@ export interface SprintFillSummary {
   unsupported: number;
   reason?: string;
 }
+export interface HourFillTotal {
+  target: number;
+  before: number;
+  after: number;
+  skippedBacklog: number;
+  reason?: string;
+}
 
-// Input items already contain local edits and match every list filter.
+// Input items already contain local edits and match the chosen task scope.
 export function fillSprintHours({
   tasks,
   minimum,
@@ -46,12 +53,15 @@ export function fillSprintHours({
   categories: readonly HourCategory[];
   supportedFields: (item: WorkItem) => string[];
   backlogPath: (item: WorkItem) => string;
-}): { changes: HourAllocation[]; summaries: SprintFillSummary[] } {
+}): {
+  changes: HourAllocation[];
+  summaries: SprintFillSummary[];
+  total: HourFillTotal;
+} {
   if (!Number.isFinite(minimum) || minimum < 0 || minimum > 10000)
-    throw new Error("Enter a sprint minimum between 0 and 10,000 hours.");
+    throw new Error("Enter a combined target between 0 and 10,000 hours.");
   const automatic = !categories.length || categories.includes("auto");
-  const buckets = new Map<string, WorkItem[]>();
-  for (const task of tasks) {
+  const classified = tasks.map((task) => {
     for (const value of [task.estimate, task.completed, task.remaining]) {
       if (
         value !== undefined &&
@@ -62,182 +72,136 @@ export function fillSprintHours({
         );
     }
     const key = JSON.stringify([task.project ?? "", task.iteration]);
-    const bucket = buckets.get(key) ?? [];
-    bucket.push(task);
-    buckets.set(key, bucket);
-  }
-  const changes = new Map<number, HourAllocation>();
-  const summaries: SprintFillSummary[] = [];
-  for (const bucket of buckets.values()) {
-    // Work in hundredths so rounded shares add up to the rounded gap exactly.
-    const before = Math.round(
-      bucket.reduce((sum, task) => sum + (task.estimate ?? 0), 0) * 100,
-    );
-    const gap = Math.round(minimum * 100) - before;
-    const classified = bucket.map((task) => ({
+    const supported = supportedFields(task);
+    return {
       task,
+      key,
       kind: taskHourCategory(task.title),
-      supported:
-        supportedFields(task).includes(fields.estimate) &&
-        supportedFields(task).includes(fields.completed),
-    }));
-    const summary: SprintFillSummary = {
-      project: bucket[0].project ?? "",
-      iteration: bucket[0].iteration,
-      before: before / 100,
+      supported,
+      eligible:
+        supported.includes(fields.estimate) &&
+        supported.includes(fields.completed),
+      backlog: !task.iteration || task.iteration === backlogPath(task),
+    };
+  });
+  const cents = (value: number) => Math.round(value * 100);
+  const sumEstimates = (items: WorkItem[]) =>
+    items.reduce((sum, task) => sum + (task.estimate ?? 0), 0);
+  const summaries = new Map<string, SprintFillSummary>();
+  for (const { task, key, kind, eligible, backlog } of classified) {
+    const summary = summaries.get(key) ?? {
+      project: task.project ?? "",
+      iteration: task.iteration,
+      before: 0,
       added: 0,
       changed: 0,
       completionOnly: 0,
-      unmatched: classified.filter(({ kind }) => !kind).length,
-      unsupported: classified.filter(
-        ({ kind, supported }) => kind && !supported,
-      ).length,
+      unmatched: 0,
+      unsupported: 0,
     };
-    summaries.push(summary);
-    if (
-      !bucket[0].iteration ||
-      bucket[0].iteration === backlogPath(bucket[0])
-    ) {
-      summary.reason = "Backlog items skipped";
+    summary.before += task.estimate ?? 0;
+    if (!kind) summary.unmatched++;
+    if (kind && !eligible) summary.unsupported++;
+    if (backlog) summary.reason = "Backlog items skipped";
+    summaries.set(key, summary);
+  }
+  for (const summary of summaries.values())
+    summary.before = cents(summary.before) / 100;
+  const active = classified.filter(({ backlog }) => !backlog);
+  const total: HourFillTotal = {
+    target: cents(minimum) / 100,
+    before: cents(sumEstimates(active.map(({ task }) => task))) / 100,
+    after: 0,
+    skippedBacklog: tasks.length - active.length,
+  };
+  total.after = total.before;
+
+  // Preserve Auto's per-story priority within each project/sprint, while
+  // allocating the target only once across all of those groups.
+  const byStory = new Map<string, typeof active>();
+  for (const entry of active) {
+    const { task, key, kind, eligible } = entry;
+    if (!kind || !eligible || (!automatic && !categories.includes(kind)))
       continue;
-    }
-    // Every estimated task contributes to the sprint total, even when its
-    // category receives no added hours. Match its completed work as well.
-    for (const task of bucket) {
-      if (
-        task.estimate !== undefined &&
-        task.completed !== task.estimate &&
-        supportedFields(task).includes(fields.completed)
-      ) {
-        changes.set(task.id, {
-          item: task,
-          values: { [fields.completed]: task.estimate },
-        });
-        summary.completionOnly++;
-      }
-    }
-    if (!gap) {
-      summary.reason = "Already at the target";
-      continue;
-    }
-    const byStory = new Map<string, WorkItem[]>();
-    for (const { task, kind, supported } of classified) {
-      if (!kind || !supported) continue;
-      if (!automatic && !categories.includes(kind)) continue;
-      // Unparented tasks are independent rather than siblings of each other.
-      const key =
-        task.parentId === undefined
-          ? `task:${task.id}`
-          : `story:${task.parentId}`;
-      const siblings = byStory.get(key) ?? [];
-      siblings.push(task);
-      byStory.set(key, siblings);
-    }
-    const eligible = [...byStory.values()]
-      .flatMap((siblings) => {
-        if (!automatic) return siblings;
-        const priority = ["implementation", "testing", "review"] as const;
-        const first = priority.find((kind) =>
-          siblings.some((task) => taskHourCategory(task.title) === kind),
-        );
-        return siblings.filter(
-          (task) => taskHourCategory(task.title) === first,
-        );
-      })
-      .sort((a, b) => a.id - b.id);
-    if (!eligible.length) {
-      summary.reason = "No eligible tasks for the selected categories";
-      continue;
-    }
-    if (gap < 0) {
-      const eligibleIds = new Set(eligible.map((item) => item.id));
-      const unchanged = bucket.reduce(
-        (sum, item) =>
-          sum + (eligibleIds.has(item.id) ? 0 : (item.estimate ?? 0)),
-        0,
+    const storyKey = JSON.stringify([
+      key,
+      task.parentId === undefined
+        ? `task:${task.id}`
+        : `story:${task.parentId}`,
+    ]);
+    const siblings = byStory.get(storyKey) ?? [];
+    siblings.push(entry);
+    byStory.set(storyKey, siblings);
+  }
+  const eligible = [...byStory.values()]
+    .flatMap((siblings) => {
+      if (!automatic) return siblings;
+      const priority = ["implementation", "testing", "review"] as const;
+      const first = priority.find((kind) =>
+        siblings.some((entry) => entry.kind === kind),
       );
-      const available = Math.round(minimum * 100) - Math.round(unchanged * 100);
-      if (available < 0) {
-        summary.reason =
-          "Cannot reach the target: other task estimates exceed it";
-        continue;
-      }
-      const amounts = eligible.map((item) =>
-        Math.round((item.estimate ?? 0) * 100),
-      );
-      let reduction =
-        amounts.reduce((sum, amount) => sum + amount, 0) - available;
-      while (reduction > 0) {
-        const active = amounts
-          .map((amount, index) => (amount > 0 ? index : -1))
-          .filter((index) => index >= 0);
-        if (!active.length) break;
-        const share = Math.floor(reduction / active.length);
-        const remainder = reduction % active.length;
-        for (const [position, index] of active.entries()) {
-          const removed = Math.min(
-            amounts[index],
-            share + (position < remainder ? 1 : 0),
-          );
-          amounts[index] -= removed;
-          reduction -= removed;
-        }
-      }
-      eligible.forEach((item, index) => {
-        const estimate = amounts[index] / 100;
-        if (estimate === (item.estimate ?? 0)) return;
-        if (changes.has(item.id)) summary.completionOnly--;
-        changes.set(item.id, {
-          item,
-          values: { [fields.estimate]: estimate, [fields.completed]: estimate },
-        });
-        summary.changed++;
-      });
-      summary.added = gap / 100;
-      continue;
-    }
-    // Only the first IDs receive a share when the gap is smaller than one
-    // hundredth per task. Keep other estimates (including extra precision) intact.
-    const recipients = eligible.slice(0, Math.min(gap, eligible.length));
-    const recipientIds = new Set(recipients.map((item) => item.id));
-    const baseCents = recipients.map((item) =>
-      Math.ceil((item.estimate ?? 0) * 100 - 1e-8),
-    );
-    const unchanged = bucket.reduce(
-      (sum, item) =>
-        sum + (recipientIds.has(item.id) ? 0 : (item.estimate ?? 0)),
-      0,
-    );
-    // Account for rounding existing estimates as well as the added hours, so
-    // saved values with more than two decimals still reach the target once.
-    const remainingGap = Math.max(
-      0,
-      Math.round(minimum * 100) -
-        Math.round(
-          unchanged * 100 + baseCents.reduce((sum, value) => sum + value, 0),
-        ),
-    );
-    const share = Math.floor(remainingGap / recipients.length);
-    const remainder = remainingGap % recipients.length;
-    recipients.forEach((item, index) => {
-      const estimate =
-        (baseCents[index] + share + (index < remainder ? 1 : 0)) / 100;
-      if (estimate === (item.estimate ?? 0)) return;
-      if (estimate > 10000)
-        throw new Error(
-          `Task #${item.id} would exceed 10,000 hours. Reduce the sprint minimum.`,
-        );
-      if (changes.has(item.id)) summary.completionOnly--;
-      changes.set(item.id, {
-        item,
-        values: { [fields.estimate]: estimate, [fields.completed]: estimate },
-      });
+      return siblings.filter((entry) => entry.kind === first);
+    })
+    .sort((a, b) => a.task.id - b.task.id);
+  const eligibleIds = new Set(eligible.map(({ task }) => task.id));
+  const fixed = sumEstimates(
+    active
+      .filter(({ task }) => !eligibleIds.has(task.id))
+      .map(({ task }) => task),
+  );
+  const available = cents(minimum) - cents(fixed);
+  if (available < 0 || !eligible.length) {
+    total.reason =
+      available < 0
+        ? "Cannot reach the combined target: other task estimates exceed it"
+        : "No eligible tasks for the selected categories";
+    for (const summary of summaries.values()) summary.reason ??= total.reason;
+    return { changes: [], summaries: [...summaries.values()], total };
+  }
+
+  // Replace previous estimates with equal shares. Integer hundredths keep
+  // the combined total exact, with deterministic remainder assignment by ID.
+  const share = Math.floor(available / eligible.length);
+  const remainder = available % eligible.length;
+  const estimates = new Map(
+    eligible.map(({ task }, index) => [
+      task.id,
+      (share + (index < remainder ? 1 : 0)) / 100,
+    ]),
+  );
+  const changes: HourAllocation[] = [];
+  let after = 0;
+  for (const { task, key, supported } of active) {
+    const estimate = estimates.get(task.id) ?? task.estimate;
+    after += estimate ?? 0;
+    const values: Record<string, number> = {};
+    const summary = summaries.get(key)!;
+    if (estimates.has(task.id) && estimate !== task.estimate) {
+      values[fields.estimate] = estimate!;
+      values[fields.completed] = estimate!;
       summary.changed++;
-    });
-    summary.added = gap / 100;
+      summary.added += estimate! - (task.estimate ?? 0);
+    } else if (
+      estimate !== undefined &&
+      task.completed !== estimate &&
+      supported.includes(fields.completed)
+    ) {
+      values[fields.completed] = estimate;
+      summary.completionOnly++;
+    }
+    if (Object.keys(values).length) changes.push({ item: task, values });
+  }
+  total.after = cents(after) / 100;
+  if (![...summaries.values()].some((summary) => summary.changed))
+    total.reason = "Already at the target";
+  for (const summary of summaries.values()) {
+    summary.added = cents(summary.added) / 100;
+    if (!summary.reason && !summary.changed && total.reason)
+      summary.reason = total.reason;
   }
   return {
-    changes: [...changes.values()].sort((a, b) => a.item.id - b.item.id),
-    summaries,
+    changes: changes.sort((a, b) => a.item.id - b.item.id),
+    summaries: [...summaries.values()],
+    total,
   };
 }

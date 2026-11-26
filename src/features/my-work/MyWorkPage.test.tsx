@@ -429,7 +429,7 @@ it("searches story titles and prefixed IDs with filtered children and retains ta
   ).toBeInTheDocument();
 });
 
-it("fills filtered sprint hours independently of hour controls and selection, with Save and Discard", async () => {
+it("fills filtered hours independently of calculation filters, with Save and Discard", async () => {
   await hourTaskFixture();
   const update = vi.spyOn(demoRepository, "update");
   const user = userEvent.setup();
@@ -441,14 +441,14 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
     screen.getByRole("button", { name: "Configure sprint minimum" }),
   );
   const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
-  expect(screen.getByText("Sprint minimum: 30h")).toBeInTheDocument();
+  expect(screen.getByText("Combined target: 30h")).toBeInTheDocument();
   await user.click(
     screen.getByRole("button", { name: "Hour settings and breakdowns" }),
   );
   const target = screen.getByLabelText("Sprint target minimum");
   await user.clear(target);
   await user.type(target, "12");
-  expect(screen.getByText("Sprint minimum: 12h")).toBeInTheDocument();
+  expect(screen.getByText("Combined target: 12h")).toBeInTheDocument();
   await user.selectOptions(
     screen.getByLabelText("Calculation user"),
     "sara@example.com",
@@ -456,9 +456,6 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
   await chooseFilter(user, "Calculation sprints", "Current sprints");
   await chooseFilter(user, "Calculation sprints", "OMS · Sprint 13");
   await user.type(screen.getByLabelText("Search work"), " #2481 ");
-  await user.click(
-    screen.getByRole("checkbox", { name: "Select task: Unit testing" }),
-  );
   await user.click(fill);
   expect(
     screen.getByLabelText("Implement frontend requirements estimate hours"),
@@ -533,6 +530,140 @@ it("fills filtered sprint hours independently of hour controls and selection, wi
     (await demoRepository.listMine()).find((item) => item.id === 2490)
       ?.estimate,
   ).toBe(5);
+});
+
+it.each([30, 40])(
+  "redistributes a selected %ih estimate across projects and sprints, leaving unchecked tasks unchanged",
+  async (estimate) => {
+    const tasks = await hourTaskFixture();
+    const implementation = tasks.find((item) => item.id === 2482)!;
+    localStorage.setItem(
+      "taskflow:v1:demo:workitems",
+      JSON.stringify([
+        ...tasks.map((item) =>
+          item.id === implementation.id ? { ...item, estimate } : item,
+        ),
+        {
+          ...implementation,
+          id: 2491,
+          title: "Implement other project",
+          project: "Other",
+          iteration: "Other\\Sprint 2",
+          parentId: undefined,
+          estimate: undefined,
+          completed: undefined,
+        },
+      ]),
+    );
+    const update = vi.spyOn(demoRepository, "update");
+    const user = userEvent.setup();
+    setup();
+    await screen.findByLabelText(
+      "Implement frontend requirements estimate hours",
+    );
+    await chooseFilter(user, "Filter destination", "All iterations");
+    for (const title of [
+      "Implement frontend requirements",
+      "Implement other project",
+    ])
+      await user.click(
+        screen.getByRole("checkbox", { name: `Select task: ${title}` }),
+      );
+    await user.click(
+      screen.getByRole("button", { name: "Configure sprint minimum" }),
+    );
+    expect(screen.getByText("2 selected tasks")).toBeInTheDocument();
+    const fill = screen.getByRole("button", { name: "Fill sprint minimum" });
+    await user.click(fill);
+    for (const title of [
+      "Implement frontend requirements",
+      "Implement other project",
+    ]) {
+      expect(screen.getByLabelText(`${title} estimate hours`)).toHaveValue(15);
+      expect(screen.getByLabelText(`${title} completed hours`)).toHaveValue(15);
+    }
+    expect(
+      screen.getByText(
+        /Combined target: 30h for selected tasks; combined estimate:/,
+      ),
+    ).toHaveTextContent(`${estimate}h → 30h`);
+    expect(screen.getByLabelText("Unit testing estimate hours")).toHaveValue(3);
+    expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(
+      null,
+    );
+    expect(
+      screen.getByLabelText("Backend code review estimate hours"),
+    ).toHaveValue(2);
+    expect(
+      screen.getByLabelText("Backend code review completed hours"),
+    ).toHaveValue(null);
+    const draft = JSON.parse(
+      localStorage.getItem("taskflow:v1:demo:work-edits")!,
+    );
+    expect(Object.keys(draft)).toEqual(["2482", "2491"]);
+    await user.click(fill);
+    expect(screen.getByText(/Already at the target/)).toBeInTheDocument();
+    expect(
+      JSON.parse(localStorage.getItem("taskflow:v1:demo:work-edits")!),
+    ).toEqual(draft);
+    expect(update).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /Save changes/ }));
+    await screen.findByText("Saved changes to 2 work items.");
+    expect(update.mock.calls.map(([item]) => item.id)).toEqual([2482, 2491]);
+  },
+);
+
+it("validates only selected task drafts and preserves invalid unchecked drafts", async () => {
+  await hourTaskFixture();
+  const user = userEvent.setup();
+  setup();
+  const unchecked = await screen.findByLabelText("Unit testing estimate hours");
+  await user.clear(unchecked);
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: "Select task: Implement frontend requirements",
+    }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Configure sprint minimum" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Fill sprint minimum" }));
+  expect(
+    screen.getByLabelText("Implement frontend requirements estimate hours"),
+  ).toHaveValue(30);
+  expect(unchecked).toHaveValue(null);
+  expect(
+    screen.queryByText(/Hours \/ story points must be a number/),
+  ).not.toBeInTheDocument();
+  expect(
+    JSON.parse(localStorage.getItem("taskflow:v1:demo:work-edits")!)[2483]
+      .values[fields.estimate],
+  ).toBe("");
+});
+
+it("explains an unreachable combined target without staging any partial changes", async () => {
+  const tasks = await hourTaskFixture();
+  localStorage.setItem(
+    "taskflow:v1:demo:workitems",
+    JSON.stringify(
+      tasks.map((item) =>
+        item.id === 2483 ? { ...item, estimate: 40 } : item,
+      ),
+    ),
+  );
+  const user = userEvent.setup();
+  setup();
+  await user.click(
+    await screen.findByRole("button", { name: "Configure sprint minimum" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Fill sprint minimum" }));
+  expect(
+    screen.getByText(/Cannot reach the combined target/),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Unit testing completed hours")).toHaveValue(
+    null,
+  );
+  expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
 });
 
 it("selects implementation and review together, toggles categories, and restores Auto", async () => {
